@@ -1,0 +1,21 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+backend/.venv/
+backend/colo_mvp.db
+
+# Runtime storage
+backend/storage/*
+!backend/storage/.gitkeep
+
+# Node
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+
+# Env
+.env

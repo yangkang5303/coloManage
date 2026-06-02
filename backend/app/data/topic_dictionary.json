@@ -1,0 +1,92 @@
+[
+  {
+    "key": "p1_response_time",
+    "label": "P1 响应时间",
+    "description": "P1/紧急事件的响应时间和解决时间要求",
+    "keywords": ["P1", "Priority 1", "Severity 1", "critical incident", "response time", "15 minutes", "emergency response", "紧急响应"]
+  },
+  {
+    "key": "power_capacity",
+    "label": "电力容量",
+    "description": "电力容量、分配、密度和可用性要求",
+    "keywords": ["power capacity", "committed power", "reserved power", "kW", "kVA", "power allocation", "power density", "power availability", "电力容量"]
+  },
+  {
+    "key": "cooling_sla",
+    "label": "制冷 SLA",
+    "description": "制冷、温度、湿度等环境条件要求",
+    "keywords": ["cooling", "temperature", "humidity", "environmental condition", "ASHRAE", "thermal", "cold aisle", "hot aisle", "制冷", "温度"]
+  },
+  {
+    "key": "availability_sla",
+    "label": "可用性 SLA",
+    "description": "服务可用性、正常运行时间和停机时间",
+    "keywords": ["availability", "uptime", "service level", "SLA", "monthly availability", "annual availability", "downtime", "可用性"]
+  },
+  {
+    "key": "remote_hands",
+    "label": "Remote Hands 支持",
+    "description": "远程人工支持服务",
+    "keywords": ["Remote Hands", "remote support", "hands and eyes", "remote operation", "reboot", "cable check", "远程支持"]
+  },
+  {
+    "key": "smart_hands",
+    "label": "Smart Hands 支持",
+    "description": "现场技术支持服务",
+    "keywords": ["Smart Hands", "onsite support", "technical assistance", "rack and stack", "device installation", "现场支持"]
+  },
+  {
+    "key": "maintenance_window",
+    "label": "维护窗口",
+    "description": "计划维护窗口和通知要求",
+    "keywords": ["maintenance window", "planned maintenance", "scheduled maintenance", "notice period", "advance notice", "维护窗口"]
+  },
+  {
+    "key": "expansion_right",
+    "label": "扩容权利",
+    "description": "未来扩容和容量预留权利",
+    "keywords": ["expansion", "future growth", "reserved capacity", "additional rack", "additional power", "right of first refusal", "capacity reservation", "扩容"]
+  },
+  {
+    "key": "price_escalation",
+    "label": "价格上调",
+    "description": "价格调整机制和年度涨幅",
+    "keywords": ["price adjustment", "annual increase", "CPI", "escalation", "price revision", "indexation", "价格调整"]
+  },
+  {
+    "key": "sla_credit",
+    "label": "SLA 赔偿",
+    "description": "服务信用赔偿和违约金",
+    "keywords": ["service credit", "SLA credit", "compensation", "liquidated damages", "credit claim", "赔偿"]
+  },
+  {
+    "key": "termination",
+    "label": "终止条款",
+    "description": "合同终止和提前退出条款",
+    "keywords": ["termination", "early termination", "exit", "migration", "notice of termination", "终止"]
+  },
+  {
+    "key": "liability_cap",
+    "label": "责任上限",
+    "description": "责任限制和间接损害赔偿",
+    "keywords": ["liability cap", "limitation of liability", "indirect damages", "consequential damages", "责任上限"]
+  },
+  {
+    "key": "audit_right",
+    "label": "审计权利",
+    "description": "审计和合规审查权利",
+    "keywords": ["audit", "inspection", "compliance review", "right to audit", "审计"]
+  },
+  {
+    "key": "security_compliance",
+    "label": "安全合规",
+    "description": "安全认证和合规要求",
+    "keywords": ["ISO 27001", "SOC 2", "PCI DSS", "physical security", "access control", "compliance", "安全合规"]
+  },
+  {
+    "key": "cross_connect",
+    "label": "交叉连接",
+    "description": "交叉连接和互联服务",
+    "keywords": ["cross connect", "interconnection", "meet-me-room", "MMR", "carrier", "交叉连接"]
+  }
+]
