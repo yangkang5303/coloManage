@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -114,9 +114,11 @@ class Obligation(Base, TimestampMixin):
 
 class TopicEvidence(Base, TimestampMixin):
     __tablename__ = "topic_evidence"
+    __table_args__ = (Index("ix_topic_evidence_topic_contract", "topic_key", "contract_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     topic_key: Mapped[str] = mapped_column(String(100), index=True)
+    contract_id: Mapped[int | None] = mapped_column(ForeignKey("contracts.id"), index=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"))
     chunk_id: Mapped[int] = mapped_column(ForeignKey("document_chunks.id"))
     evidence_text: Mapped[str] = mapped_column(Text)

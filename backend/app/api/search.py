@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -25,9 +25,13 @@ def api_search_chunks(payload: SearchChunksRequest, db: Session = Depends(get_db
 
 @router.post("/search/topic")
 def api_search_topic(payload: TopicRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    if payload.contract_id is None:
+        raise HTTPException(status_code=400, detail="contract_id is required")
     return search_by_topic(db, payload.topic_key, payload.contract_id)
 
 
 @router.post("/search/evidence-pack")
 def api_evidence_pack(payload: TopicRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return get_evidence_pack(db, payload.topic_key, payload.contract_id) if payload.contract_id else {"error": "contract_id is required"}
+    if payload.contract_id is None:
+        raise HTTPException(status_code=400, detail="contract_id is required")
+    return get_evidence_pack(db, payload.topic_key, payload.contract_id)
