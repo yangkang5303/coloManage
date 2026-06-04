@@ -19,3 +19,13 @@ frontend/.next/
 
 # Env
 .env
+
+# Local scripts and debug files
+*.bat
+backend/check_*.py
+backend/verify_*.py
+backend/run_seed.py
+frontend/run_install.bat
+
+# Storage directories (not tracked)
+storage/
