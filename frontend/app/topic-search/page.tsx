@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+import { apiGet, apiPost } from "@/lib/api";
 
 interface TopicOption {
   key: string;
@@ -26,6 +25,7 @@ interface EvidenceItem {
   combined_score?: number;
   keyword_score?: number;
   vector_score?: number;
+  cosine_score?: number;
   evidence_text?: string;
   document_role?: string;
 }
@@ -62,6 +62,7 @@ const DOCUMENT_TYPE_COLORS: Record<string, string> = {
 export default function TopicSearchPage() {
   const [topicKey, setTopicKey] = useState("p1_response_time");
   const [contractId, setContractId] = useState("1");
+  const [keywords, setKeywords] = useState("");
   const [result, setResult] = useState<EvidencePack | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -69,61 +70,34 @@ export default function TopicSearchPage() {
 
   // 从 API 动态加载话题列表
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const login = await fetch(`${API_BASE}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: "admin@example.com", password: "admin123" }),
-        });
-        const token = login.ok ? (await login.json()).access_token : "";
-        const res = await fetch(`${API_BASE}/search/topics`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!cancelled && res.ok) {
-          const data: TopicOption[] = await res.json();
-          setTopics(data);
-          // 设置默认选中第一个话题
-          if (data.length > 0) {
-            setTopicKey(data[0].key);
-          }
-        }
-      } catch {
-        // 静默失败
-      } finally {
-        cancelled = true;
-      }
-    })();
-    return () => { cancelled = true; };
+    apiGet("/search/topics")
+      .then((data: TopicOption[]) => {
+        setTopics(data);
+        if (data.length > 0) setTopicKey(data[0].key);
+      })
+      .catch(() => undefined);
   }, []);
 
   async function run() {
+    const customKeywords = keywords.trim();
+    if (!contractId || Number.isNaN(Number(contractId))) {
+      setError("请输入有效的合同 ID");
+      return;
+    }
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const login = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "admin@example.com", password: "admin123" }),
-      });
-      const token = login.ok ? (await login.json()).access_token : "";
-      const res = await fetch(`${API_BASE}/search/evidence-pack`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          topic_key: topicKey,
-          contract_id: Number(contractId),
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`请求失败: ${res.status} ${res.statusText}`);
-      }
-      const data: EvidencePack = await res.json();
+      const data: EvidencePack = customKeywords
+        ? await apiPost("/search/keyword-topic", {
+            keywords: customKeywords,
+            contract_id: Number(contractId),
+            limit: 50,
+          })
+        : await apiPost("/search/evidence-pack", {
+            topic_key: topicKey,
+            contract_id: Number(contractId),
+          });
       setResult(data);
     } catch (err: any) {
       setError(err.message || "未知错误");
@@ -151,7 +125,7 @@ export default function TopicSearchPage() {
   const totalEvidence = allEvidence.length;
 
   // 获取当前话题的显示标签
-  const currentTopicLabel = topics.find((t) => t.key === topicKey)?.label || topicKey;
+  const currentTopicLabel = keywords.trim() || topics.find((t) => t.key === topicKey)?.label || topicKey;
   const currentTopicDesc = topics.find((t) => t.key === topicKey)?.description || "";
 
   return (
@@ -173,7 +147,20 @@ export default function TopicSearchPage() {
         </div>
         <div className="flex-1 min-w-[280px]">
           <label className="block text-sm font-medium text-gray-600 mb-1">
-            选择话题
+            自定义关键词（优先）
+          </label>
+          <input
+            className="rounded-md border border-line px-3 py-2 w-full"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") run(); }}
+            placeholder="输入关键词，支持空格或逗号分隔，如：SLA 可用性 赔偿"
+          />
+          <p className="mt-1 text-xs text-gray-400">结果按关键词匹配分与 cosine 相似度加权排序</p>
+        </div>
+        <div className="flex-1 min-w-[280px]">
+          <label className="block text-sm font-medium text-gray-600 mb-1">
+            或选择预设话题
           </label>
           <select
             className="rounded-md border border-line px-3 py-2 w-full bg-white"
@@ -254,7 +241,7 @@ export default function TopicSearchPage() {
                       {item.combined_score != null && (
                         <div className="text-xs text-gray-400 mt-1">
                           <div>KW: {item.keyword_score?.toFixed(2)}</div>
-                          <div>Vec: {item.vector_score?.toFixed(2)}</div>
+                          <div>Cos: {(item.cosine_score ?? item.vector_score)?.toFixed(2)}</div>
                         </div>
                       )}
                     </td>
@@ -296,7 +283,7 @@ export default function TopicSearchPage() {
       {/* 空状态 */}
       {result && totalEvidence === 0 && !error && (
         <div className="rounded-md border border-line p-8 text-center text-gray-500">
-          未找到匹配的证据，请尝试其他话题
+          未找到匹配的证据，请尝试其他关键词或预设话题
         </div>
       )}
     </section>

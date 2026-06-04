@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { LogIn } from "lucide-react";
 import { apiGet } from "@/lib/api";
 
 export default async function Dashboard() {
@@ -10,7 +12,16 @@ export default async function Dashboard() {
   ];
   return (
     <section>
-      <h1 className="mb-4 text-2xl font-semibold">Dashboard</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <Link
+          href="/login"
+          className="flex items-center gap-2 rounded-md bg-action px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          <LogIn className="h-4 w-4" />
+          Login
+        </Link>
+      </div>
       <div className="grid grid-cols-4 gap-4">
         {items.map(([label, value]) => (
           <div key={label} className="rounded-md border border-line bg-white p-4">

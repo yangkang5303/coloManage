@@ -7,9 +7,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.domain import Document, DocumentChunk, User
+from app.models.domain import Document, DocumentChunk, Obligation, TopicEvidence, User
 from app.schemas.domain import DocumentRead
-from app.core.config import get_settings
 from app.services.audit import audit
 from app.services.embedding import generate_embedding
 from app.services.parser import UnsupportedOCR, file_sha256, parse_document, split_into_chunks
@@ -66,6 +65,33 @@ def get_document(document_id: int, db: Session = Depends(get_db), _: User = Depe
     if not row:
         raise HTTPException(status_code=404, detail="Document not found")
     return row
+
+
+@router.delete("/documents/{document_id}")
+def delete_document(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    row = db.get(Document, document_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(row.file_path) if row.file_path else None
+    db.query(Obligation).filter(Obligation.source_document_id == document_id).update(
+        {Obligation.source_document_id: None, Obligation.source_chunk_id: None},
+        synchronize_session=False,
+    )
+    db.query(TopicEvidence).filter(TopicEvidence.document_id == document_id).delete(synchronize_session=False)
+    db.delete(row)
+    db.commit()
+
+    file_deleted = False
+    if file_path and file_path.is_file():
+        try:
+            file_path.unlink()
+            file_deleted = True
+        except OSError:
+            # The database entry is already deleted; expose the cleanup result for operators.
+            file_deleted = False
+    audit(db, user.id, "delete", "document", document_id, {"file_deleted": file_deleted})
+    return {"status": "deleted", "document_id": document_id, "file_deleted": file_deleted}
 
 
 @router.post("/documents/{document_id}/process")

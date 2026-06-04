@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { apiGet, apiPost } from "@/lib/api";
-import { Plus, X, Play, Upload, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { X, Play, Upload, CheckCircle, AlertCircle, Loader2, Trash2 } from "lucide-react";
 
 interface Document {
   id: number;
@@ -58,6 +58,7 @@ export default function Page() {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,6 +126,20 @@ export default function Page() {
       setError(e.message);
     } finally {
       setProcessingId(null);
+    }
+  }
+
+  async function handleDelete(doc: Document) {
+    if (!window.confirm(`Delete “${doc.title}” and its processed chunks? This cannot be undone.`)) return;
+    setDeletingId(doc.id);
+    setError("");
+    try {
+      await apiDelete(`/documents/${doc.id}`);
+      setDocuments((current) => current.filter((item) => item.id !== doc.id));
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -325,6 +340,7 @@ export default function Page() {
                   {new Date(doc.uploaded_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
                   {!isProcessed(doc.processing_status) && doc.processing_status !== "error" && (
                     <button
                       onClick={() => handleProcess(doc.id)}
@@ -345,6 +361,19 @@ export default function Page() {
                   {doc.processing_status === "error" && (
                     <span className="text-xs text-red-600">Error</span>
                   )}
+                  <button
+                    onClick={() => handleDelete(doc)}
+                    disabled={deletingId === doc.id}
+                    className="flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    title="Delete document and related chunks"
+                  >
+                    {deletingId === doc.id ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Deleting...</>
+                    ) : (
+                      <><Trash2 className="h-3 w-3" /> Delete</>
+                    )}
+                  </button>
+                  </div>
                 </td>
               </tr>
             ))}
