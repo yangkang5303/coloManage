@@ -1,6 +1,5 @@
 import re
 from collections import defaultdict
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -44,7 +43,7 @@ def search_chunks(
     
     # Base query
     q = db.query(DocumentChunk, Document).join(Document, Document.id == DocumentChunk.document_id)
-    if contract_id:
+    if contract_id is not None:
         q = q.filter(Document.contract_id == contract_id)
     if document_type:
         q = q.filter(Document.document_type == document_type)
@@ -100,12 +99,17 @@ def search_chunks(
     return keyword_scored[:limit]
 
 
-def search_by_topic(db: Session, topic_key: str, contract_id: int | None = None) -> list[dict]:
+def search_by_topic(db: Session, topic_key: str, contract_id: int | None) -> list[dict]:
+    if contract_id is None:
+        raise ValueError("contract_id is required for topic evidence search")
     keywords = keywords_for_topic(topic_key)
     if not keywords:
         return []
-    # 清除该 topic 之前的证据记录，避免重复累积
-    db.query(TopicEvidence).filter(TopicEvidence.topic_key == topic_key).delete()
+    # 清除该合同内该 topic 之前的证据记录，避免重复累积且不影响其他合同。
+    db.query(TopicEvidence).filter(
+        TopicEvidence.topic_key == topic_key,
+        TopicEvidence.contract_id == contract_id,
+    ).delete()
     results = search_chunks(db, " ".join(keywords), contract_id=contract_id, limit=100)
     grouped: dict[str, list[dict]] = defaultdict(list)
     for item in results:
@@ -117,6 +121,7 @@ def search_by_topic(db: Session, topic_key: str, contract_id: int | None = None)
         db.add(
             TopicEvidence(
                 topic_key=topic_key,
+                contract_id=contract_id,
                 document_id=item["document_id"],
                 chunk_id=item["chunk_id"],
                 evidence_text=item["text"][:2000],
@@ -128,7 +133,9 @@ def search_by_topic(db: Session, topic_key: str, contract_id: int | None = None)
     return sorted(top, key=lambda item: item.get("combined_score", item["score"]), reverse=True)
 
 
-def get_evidence_pack(db: Session, topic_key: str, contract_id: int) -> dict:
+def get_evidence_pack(db: Session, topic_key: str, contract_id: int | None) -> dict:
+    if contract_id is None:
+        raise ValueError("contract_id is required for evidence pack retrieval")
     evidence = search_by_topic(db, topic_key, contract_id)
     pack = {
         "topic_key": topic_key,
@@ -164,6 +171,7 @@ def _score_row(chunk: DocumentChunk, document: Document, terms: list[str]) -> di
     return {
         "chunk_id": chunk.id,
         "document_id": document.id,
+        "contract_id": document.contract_id,
         "document_title": document.title,
         "document_type": document.document_type,
         "chunk_index": chunk.chunk_index,
