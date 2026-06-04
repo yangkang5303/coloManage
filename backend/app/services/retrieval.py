@@ -1,5 +1,6 @@
 import re
 from collections import defaultdict
+
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -19,9 +20,9 @@ DOCUMENT_WEIGHTS = {
 
 SIGNAL_RE = re.compile(r"\b(\d+(?:\.\d+)?%?|\d+\s*minutes?|shall|must|required|mandatory|committed|included|excluded|best effort|reasonable effort|commercially reasonable)\b|必须|应当|应提供|承诺|保证|不低于|不超过", re.I)
 
-# Hybrid search: weight for combining keyword score and vector similarity
+# Hybrid search weights. Cosine similarity is the stronger semantic signal.
 KEYWORD_WEIGHT = 0.4
-VECTOR_WEIGHT = 0.6
+COSINE_WEIGHT = 0.6
 
 
 def search_chunks(
@@ -32,71 +33,54 @@ def search_chunks(
     limit: int = 10,
     use_vector: bool = True,
 ) -> list[dict]:
-    """
-    Hybrid search combining keyword matching and vector similarity.
-    
-    - Keyword search: traditional ILIKE matching with term frequency scoring
-    - Vector search: semantic similarity using BAAI/bge-m3 embeddings
-    - Results are merged and ranked by combined score
-    """
-    terms = [term.strip() for term in re.split(r"\s+|,", query) if term.strip()]
-    
-    # Base query
+    """Rank chunks using a weighted keyword score plus cosine similarity."""
+    terms = [term.strip() for term in re.split(r"[\s,，;；]+", query) if term.strip()]
+    if not terms:
+        return []
+
     q = db.query(DocumentChunk, Document).join(Document, Document.id == DocumentChunk.document_id)
     if contract_id is not None:
         q = q.filter(Document.contract_id == contract_id)
     if document_type:
         q = q.filter(Document.document_type == document_type)
-    
-    # Fetch up to 200 candidates
+
     rows = q.limit(200).all()
-    
     if not rows:
         return []
-    
-    # Keyword scoring
-    keyword_scored = [_score_row(chunk, document, terms) for chunk, document in rows]
-    
-    # Vector scoring (if enabled and embedding available)
-    if use_vector:
-        settings = get_settings()
-        if settings.embedding_enabled:
-            query_embedding = generate_embedding(query)
-            if query_embedding:
-                # Build chunk dicts with embeddings for vector ranking
-                chunk_dicts = []
-                for chunk, document in rows:
-                    if chunk.embedding:
-                        chunk_dicts.append({
-                            "chunk_id": chunk.id,
-                            "embedding": chunk.embedding,
-                        })
-                
-                if chunk_dicts:
-                    vector_ranked = rank_by_similarity(query_embedding, chunk_dicts, top_k=200)
-                    # Build lookup: chunk_id -> similarity_score
-                    vector_scores = {item["chunk_id"]: item["similarity_score"] for item in vector_ranked}
-                    
-                    # Combine scores
-                    for item in keyword_scored:
-                        vec_score = vector_scores.get(item["chunk_id"], 0.0)
-                        # Normalize keyword score to [0, 1] range approximately
-                        norm_kw = min(item["score"] / 10.0, 1.0)
-                        item["combined_score"] = round(
-                            KEYWORD_WEIGHT * norm_kw + VECTOR_WEIGHT * vec_score, 4
-                        )
-                        item["keyword_score"] = item["score"]
-                        item["vector_score"] = vec_score
-                    keyword_scored.sort(key=lambda x: x.get("combined_score", 0), reverse=True)
-            else:
-                # Fallback to keyword only
-                keyword_scored.sort(key=lambda item: item["score"], reverse=True)
-        else:
-            keyword_scored.sort(key=lambda item: item["score"], reverse=True)
-    else:
-        keyword_scored.sort(key=lambda item: item["score"], reverse=True)
-    
-    return keyword_scored[:limit]
+
+    scored = [_score_row(chunk, document, terms) for chunk, document in rows]
+    cosine_scores: dict[int, float] = {}
+    if use_vector and get_settings().embedding_enabled:
+        query_embedding = generate_embedding(query)
+        if query_embedding:
+            chunks_with_embeddings = [
+                {"chunk_id": chunk.id, "embedding": chunk.embedding}
+                for chunk, _ in rows
+                if chunk.embedding
+            ]
+            cosine_scores = {
+                item["chunk_id"]: item["similarity_score"]
+                for item in rank_by_similarity(query_embedding, chunks_with_embeddings, top_k=200)
+            }
+
+    for item in scored:
+        cosine_score = cosine_scores.get(item["chunk_id"], 0.0)
+        # Keyword score is open-ended; cap it before combining with cosine similarity.
+        normalized_keyword_score = min(item["score"] / 10.0, 1.0)
+        # Cosine may be negative. Negative similarity must not lower an exact keyword match.
+        normalized_cosine_score = max(cosine_score, 0.0)
+        item["keyword_score"] = item["score"]
+        item["cosine_score"] = round(cosine_score, 4)
+        item["vector_score"] = item["cosine_score"]  # Backward-compatible API field.
+        item["combined_score"] = round(
+            KEYWORD_WEIGHT * normalized_keyword_score + COSINE_WEIGHT * normalized_cosine_score,
+            4,
+        )
+
+    # Exclude chunks with neither a keyword match nor positive cosine similarity.
+    scored = [item for item in scored if item["combined_score"] > 0]
+    scored.sort(key=lambda item: item["combined_score"], reverse=True)
+    return scored[:limit]
 
 
 def search_by_topic(db: Session, topic_key: str, contract_id: int | None) -> list[dict]:
@@ -105,18 +89,12 @@ def search_by_topic(db: Session, topic_key: str, contract_id: int | None) -> lis
     keywords = keywords_for_topic(topic_key)
     if not keywords:
         return []
-    # 清除该合同内该 topic 之前的证据记录，避免重复累积且不影响其他合同。
     db.query(TopicEvidence).filter(
         TopicEvidence.topic_key == topic_key,
         TopicEvidence.contract_id == contract_id,
     ).delete()
     results = search_chunks(db, " ".join(keywords), contract_id=contract_id, limit=100)
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for item in results:
-        grouped[item["document_type"]].append(item)
-    top: list[dict] = []
-    for items in grouped.values():
-        top.extend(items[:5])
+    top = _top_per_document_type(results)
     for item in top:
         db.add(
             TopicEvidence(
@@ -126,17 +104,39 @@ def search_by_topic(db: Session, topic_key: str, contract_id: int | None) -> lis
                 chunk_id=item["chunk_id"],
                 evidence_text=item["text"][:2000],
                 document_role=item["document_type"],
-                score=item.get("combined_score", item["score"]),
+                score=item["combined_score"],
             )
         )
     db.commit()
-    return sorted(top, key=lambda item: item.get("combined_score", item["score"]), reverse=True)
+    return sorted(top, key=lambda item: item["combined_score"], reverse=True)
 
 
 def get_evidence_pack(db: Session, topic_key: str, contract_id: int | None) -> dict:
     if contract_id is None:
         raise ValueError("contract_id is required for evidence pack retrieval")
-    evidence = search_by_topic(db, topic_key, contract_id)
+    return _build_evidence_pack(topic_key, contract_id, search_by_topic(db, topic_key, contract_id))
+
+
+def get_keyword_evidence_pack(db: Session, keywords: str, contract_id: int, limit: int = 50) -> dict:
+    """Build an evidence pack for ad-hoc user keywords without mutating saved topic evidence."""
+    query = keywords.strip()
+    if not query:
+        return _build_evidence_pack("custom", contract_id, [])
+    evidence = _top_per_document_type(search_chunks(db, query, contract_id=contract_id, limit=limit))
+    return _build_evidence_pack(query, contract_id, evidence)
+
+
+def _top_per_document_type(results: list[dict], per_type: int = 5) -> list[dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for item in results:
+        grouped[item["document_type"]].append(item)
+    top: list[dict] = []
+    for items in grouped.values():
+        top.extend(items[:per_type])
+    return sorted(top, key=lambda item: item["combined_score"], reverse=True)
+
+
+def _build_evidence_pack(topic_key: str, contract_id: int, evidence: list[dict]) -> dict:
     pack = {
         "topic_key": topic_key,
         "contract_id": contract_id,
@@ -162,10 +162,9 @@ def get_evidence_pack(db: Session, topic_key: str, contract_id: int | None) -> d
 def _score_row(chunk: DocumentChunk, document: Document, terms: list[str]) -> dict:
     text = chunk.text or ""
     lowered = text.lower()
-    score = 0.0
-    for term in terms:
-        score += lowered.count(term.lower()) * 2.0
-    if SIGNAL_RE.search(text):
+    score = sum(lowered.count(term.lower()) * 2.0 for term in terms)
+    # Contractual signal words are a boost, not a match by themselves.
+    if score > 0 and SIGNAL_RE.search(text):
         score += 2.0
     score *= DOCUMENT_WEIGHTS.get(document.document_type, 1.0)
     return {

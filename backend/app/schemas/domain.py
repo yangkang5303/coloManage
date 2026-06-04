@@ -109,6 +109,12 @@ class TopicRequest(BaseModel):
     contract_id: int | None = None
 
 
+class KeywordTopicRequest(BaseModel):
+    keywords: str = Field(min_length=1, max_length=500)
+    contract_id: int
+    limit: int = Field(default=50, ge=1, le=100)
+
+
 class ChatRequest(BaseModel):
     question: str
     contract_id: int | None = None

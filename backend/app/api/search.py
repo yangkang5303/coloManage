@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.domain import User
-from app.schemas.domain import SearchChunksRequest, TopicRequest
-from app.services.retrieval import get_evidence_pack, search_by_topic, search_chunks
+from app.schemas.domain import KeywordTopicRequest, SearchChunksRequest, TopicRequest
+from app.services.retrieval import get_evidence_pack, get_keyword_evidence_pack, search_by_topic, search_chunks
 from app.services.topic_dictionary import get_all_topics
 
 
@@ -35,3 +35,13 @@ def api_evidence_pack(payload: TopicRequest, db: Session = Depends(get_db), _: U
     if payload.contract_id is None:
         raise HTTPException(status_code=400, detail="contract_id is required")
     return get_evidence_pack(db, payload.topic_key, payload.contract_id)
+
+
+@router.post("/search/keyword-topic")
+def api_keyword_topic_search(
+    payload: KeywordTopicRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Use user-provided keywords and cosine similarity to build a topic evidence pack."""
+    return get_keyword_evidence_pack(db, payload.keywords, payload.contract_id, payload.limit)
