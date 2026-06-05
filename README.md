@@ -1,143 +1,213 @@
 # Colo Contract Execution Intelligence MVP
 
-Colo 合同执行智能中台 MVP，用于企业内网部署的 AI-assisted contract review。系统坚持 evidence first：所有 AI 输出必须基于检索证据，找不到证据时返回 `evidence_not_found`，高风险输出必须人工复核。
+[Chinese README](README-CN.md)
 
-## What Is Included
+## Runtime Environment
 
-- FastAPI backend with JWT auth, CRUD APIs, document upload, parsing, chunking, topic retrieval, no-vector evidence packs, rule engine, gap analysis, risk issues, CEO brief drafts, AI output logs, and audit logs.
-- PostgreSQL-first persistence with SQLite fallback for local smoke tests.
-- OpenAI-compatible internal LLM gateway. No public model endpoint is hard-coded.
-- Next.js frontend scaffold with pages for dashboard, entities, documents, topic search, gap analysis, risk issues, CEO briefs, logs, and settings.
-- Docker Compose for backend, frontend, postgres, redis, and optional MinIO.
-- Demo seed data covering P1 response weakening, Smart Hands time limits, CPI + 5% escalation, expansion right gap, SLA credit, and billing anomaly examples.
+Docker Compose is the recommended runtime. The included containers use the following environment:
 
-## Quick Start
+| Component | Runtime / image | Default port |
+| --- | --- | --- |
+| Backend | Python 3.12, FastAPI, Uvicorn | `8000` |
+| Frontend | Node.js 22, Next.js 15, React 19 | `3000` |
+| Primary database | PostgreSQL 16 | `5432` |
+| Queue / cache | Redis 7 | `6379` |
+| Optional object storage | MinIO | `9000` (API), `9001` (console) |
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+For local development without Docker, use Python 3.12 and Node.js 22. SQLite can replace PostgreSQL for backend smoke tests. Docker Engine with the Docker Compose plugin is required for the recommended setup. The default embedding model, `BAAI/bge-m3`, is downloaded by `sentence-transformers` when embedding generation is first used, so the backend needs network access and sufficient model storage unless embeddings are disabled.
 
-Backend: `http://localhost:8000`
+## Overview
 
-Frontend: `http://localhost:3000`
+Colo is an evidence-first, AI-assisted contract execution intelligence MVP designed for enterprise-network deployment. It connects vendors, projects, sites, contracts, and source documents; retrieves supporting contract evidence; detects gaps and risks; and prepares reviewable outputs for operators, legal teams, and executives.
 
-API docs: `http://localhost:8000/docs`
+AI-generated results are constrained to retrieved evidence. When evidence cannot be found, the system returns `evidence_not_found`. Risk issues and executive briefs remain drafts until a human reviews them.
 
-Demo login:
+## Current Capabilities
+
+- JWT authentication and a seeded administrator account.
+- Vendor, project, site, and contract records with contract-related documents, chunks, obligations, and risks.
+- Document upload, processing, inspection, and deletion for text, DOCX, XLSX, and text-based PDF files.
+- Chunk metadata such as page number, sheet name, section title, and clause reference.
+- Hybrid document search that combines keyword matching with multilingual embedding similarity.
+- Topic-dictionary evidence retrieval scoped to a selected contract.
+- Evidence-backed AI operations for document classification, sourced chat, obligation extraction, topic comparison, risk issue drafting, and CEO brief generation.
+- Rule-based gap analysis for one topic or an entire contract.
+- Risk review actions: confirm, reject, or request legal review.
+- Dashboard summaries, vendor risk views, high-risk issue views, expiring-contract views, AI output logs, and audit logs.
+- Docker Compose services for the frontend, backend, PostgreSQL, Redis, and MinIO.
+- Demo data covering P1 response weakening, Smart Hands time limits, CPI plus 5% escalation, expansion-right gaps, SLA credits, and billing anomalies.
+
+## Architecture
 
 ```text
-email: admin@example.com
-password: admin123
+Next.js frontend (3000)
+        |
+        v
+FastAPI backend (8000) ---- OpenAI-compatible internal LLM gateway
+        |
+        +---- PostgreSQL 16 (primary persistence)
+        +---- SQLite (optional local smoke-test persistence)
+        +---- Redis 7
+        +---- Local document storage / MinIO service
+        +---- sentence-transformers multilingual embeddings
 ```
 
-## Local Backend Smoke Test Without Docker
+The LLM gateway is configurable and no public commercial model endpoint is hard-coded. The model receives retrieved evidence chunks rather than complete contracts.
+
+## Quick Start with Docker Compose
+
+1. Create the runtime environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Review `.env`, especially `SECRET_KEY` and the internal LLM gateway settings.
+
+3. Build and start the stack:
+
+   ```bash
+   docker compose up --build
+   ```
+
+4. Open the services:
+
+   - Frontend: <http://localhost:3000>
+   - Backend: <http://localhost:8000>
+   - Interactive API documentation: <http://localhost:8000/docs>
+   - Health check: <http://localhost:8000/health>
+   - MinIO console: <http://localhost:9001>
+
+The backend container seeds demo data each time it starts.
+
+### Demo Login
+
+```text
+Email: admin@example.com
+Password: admin123
+```
+
+## Local Development
+
+### Backend with SQLite
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 DATABASE_URL=sqlite:///./colo_mvp.db python -m app.seed
-DATABASE_URL=sqlite:///./colo_mvp.db uvicorn app.main:app --reload
+DATABASE_URL=sqlite:///./colo_mvp.db uvicorn app.main:app --reload --port 8000
 ```
 
-## Environment
+Run backend tests from the `backend` directory:
 
-`LLM_BASE_URL` must point to an enterprise internal OpenAI-compatible API. Public commercial AI APIs are intentionally not configured.
-
-```text
-LLM_BASE_URL=http://internal-llm.company.local/v1
-LLM_API_KEY=changeme
-LLM_SMALL_MODEL=internal-9b
-LLM_MEDIUM_MODEL=internal-14b
-LLM_TIMEOUT_SECONDS=120
+```bash
+python -m unittest discover -s tests -v
 ```
 
-## Verification Flow
+### Frontend
 
-1. Start the stack.
-2. Login as `admin@example.com`.
-3. Open `POST /gap-analysis/run-topic` in API docs.
-4. Submit:
+In a separate terminal:
 
-```json
-{
-  "contract_id": 1,
-  "topic_key": "p1_response_time"
-}
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-Expected result: a HIGH risk draft for `COMMITMENT_WEAKENED` with cited RFP, Proposal, and Contract chunks.
+Other frontend commands:
 
-## MVP Boundaries
+```bash
+npm run build
+npm run lint
+```
 
-- OCR and scanned PDFs are not supported. If PDF text extraction is too short, processing returns `OCR_NOT_SUPPORTED_IN_MVP`.
-- The model receives only retrieved evidence chunks, never full contracts.
-- The rule engine creates draft issues; it does not make final legal conclusions.
-- Every risk and brief is designed for human review before action.
+## Configuration
 
-## Windows Setup Notes
+The project reads backend settings from environment variables. Start with `.env.example`.
 
-### Python Virtual Environment
+| Variable | Purpose | Default / example |
+| --- | --- | --- |
+| `DATABASE_URL` | SQLAlchemy database connection | `postgresql+psycopg://colo:colo@postgres:5432/colo` |
+| `SECRET_KEY` | JWT signing secret | Change before deployment |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime | `720` |
+| `STORAGE_DIR` | Uploaded-document storage directory | `/app/storage` |
+| `BACKEND_CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:3000` |
+| `LLM_BASE_URL` | Internal OpenAI-compatible API base URL | `http://internal-llm.company.local/v1` |
+| `LLM_API_KEY` | Internal LLM gateway credential | `changeme` |
+| `LLM_SMALL_MODEL` | Model used for smaller AI tasks | `internal-9b` |
+| `LLM_MEDIUM_MODEL` | Model used for larger AI tasks | `internal-14b` |
+| `LLM_TIMEOUT_SECONDS` | LLM request timeout | `120` |
+| `EMBEDDING_MODEL` | Sentence-transformers model | `BAAI/bge-m3` |
+| `EMBEDDING_DIM` | Expected embedding dimension | `1024` |
+| `EMBEDDING_ENABLED` | Enables semantic scoring in hybrid search | `true` |
+
+Set `EMBEDDING_ENABLED=false` when the embedding model is unavailable; search will continue with keyword scoring.
+
+## Main Workflows
+
+### Process and Search Documents
+
+1. Log in and create or select a contract.
+2. Upload a supported document from the Documents page or `POST /documents/upload`.
+3. Process it with `POST /documents/{document_id}/process` to parse, chunk, and embed its content.
+4. Search processed chunks through Topic Search or the search API.
+5. Delete a document with `DELETE /documents/{document_id}` when it and its related evidence should be removed.
+
+### Run Gap Analysis
+
+1. Open `POST /gap-analysis/run-topic` in the API documentation.
+2. Submit a contract and topic:
+
+   ```json
+   {
+     "contract_id": 1,
+     "topic_key": "p1_response_time"
+   }
+   ```
+
+3. Review the evidence-backed draft risk. With the seeded demo data, this request is expected to identify a high-risk `COMMITMENT_WEAKENED` issue using cited RFP, proposal, and contract chunks.
+4. Confirm, reject, or request legal review for the draft issue.
+
+Use `POST /gap-analysis/run-contract` to evaluate every configured topic for a contract.
+
+## Frontend Areas
+
+The current frontend includes Dashboard, Vendors, Projects, Sites, Contracts, Documents, Topic Search, Gap Analysis, Risk Issues, CEO Briefs, AI Chat, AI Output Logs, Audit Logs, and Admin Settings.
+
+## Supported Documents and MVP Boundaries
+
+- Supported parsers: plain text, DOCX, XLSX, and text-based PDF.
+- OCR and scanned PDFs are not supported. A PDF with too little extractable text returns `OCR_NOT_SUPPORTED_IN_MVP`.
+- The topic dictionary uses configured keywords, while custom hybrid search supports multilingual semantic matching when embeddings are enabled.
+- Embeddings are stored as JSON-compatible arrays for SQLite compatibility; this MVP does not use a dedicated vector database.
+- The rule engine and AI create draft findings, not final legal conclusions.
+- All high-risk findings and briefs require human review before action.
+- The included credentials and service settings are for local demonstration only and must be changed before deployment.
+
+## Windows Notes
+
+Use PowerShell to create and activate the backend environment:
 
 ```powershell
 cd backend
-python -m venv .venv
-.venv\Scripts\activate          # Windows 激活命令（不同于 macOS 的 source .venv/bin/activate）
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### Node.js / npm
+Start the frontend in a second PowerShell window:
 
-- 确保 Node.js ≥ 18
-- 首次 `npm install` 可能需要安装 **Visual Studio Build Tools**（编译原生模块）
-- 如果遇到 `node-gyp` 报错：`npm install --global windows-build-tools`
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-### .env File Encoding
-
-- 确保 `.env` 文件编码为 **UTF-8**（避免中文注释乱码）
-- VS Code 右下角可确认/切换编码
-
-### Git Line Endings
-
-Windows Git 默认将 LF 转为 CRLF，可能导致 Python 缩进错误：
+Keep `.env` encoded as UTF-8. If Git line-ending conversion causes script or Python issues, configure the repository to preserve LF endings:
 
 ```bash
 git config core.autocrlf false
 ```
-
-### Port Conflicts
-
-- 前端默认 `3000`，后端默认 `8000`
-- 检查端口占用：`netstat -ano | findstr :3000`
-
-### Firewall
-
-- Windows Defender 防火墙可能阻止本地端口
-- 确保允许 Node.js 和 Python 通过，或临时关闭防火墙测试
-
-### Full Startup Steps (Windows)
-
-```powershell
-# 1. Backend
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
-
-# 2. Frontend (new terminal)
-cd frontend
-npm install
-npm run dev
-
-# 3. Visit http://localhost:3000
-```
-
-### Bilingual Documents (Chinese + English)
-
-- Parser handles both languages transparently
-- Topic dictionary currently uses English keywords only — Chinese content won't match topic search
-- Direct keyword search (Topic Search page) works for both languages
-- For best results: configure LLM to enable semantic understanding of mixed-language queries
