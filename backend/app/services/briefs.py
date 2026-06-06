@@ -4,7 +4,7 @@ from app.models.domain import CeoBrief, RiskIssue
 from app.services.llm_gateway import LLMGateway
 
 
-def generate_ceo_brief(db: Session, title: str, scope_description: str | None, risk_issue_ids: list[int] | None, created_by: int | None) -> CeoBrief:
+async def generate_ceo_brief(db: Session, title: str, scope_description: str | None, risk_issue_ids: list[int] | None, created_by: int | None) -> CeoBrief:
     query = db.query(RiskIssue)
     if risk_issue_ids:
         query = query.filter(RiskIssue.id.in_(risk_issue_ids))
@@ -28,7 +28,7 @@ def generate_ceo_brief(db: Session, title: str, scope_description: str | None, r
         for key, values in evidence.items():
             if key.endswith("_evidence"):
                 cited.extend(item.get("chunk_id") for item in values if item.get("chunk_id"))
-    ai = LLMGateway(db).run("generate_ceo_brief", {"risk_issues": issue_payload, "scope": scope_description}, cited_chunk_ids=cited)
+    ai = await LLMGateway(db).run("generate_ceo_brief", {"risk_issues": issue_payload, "scope": scope_description}, cited_chunk_ids=cited)
     markdown = ai.get("brief_markdown") or _fallback_brief(issue_payload)
     row = CeoBrief(
         title=title,

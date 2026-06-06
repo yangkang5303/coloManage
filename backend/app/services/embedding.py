@@ -5,8 +5,6 @@ Supports both Chinese and English text for semantic search.
 The model is loaded lazily and cached for reuse.
 Embeddings are stored as JSON arrays in SQLite for compatibility.
 """
-import json
-import math
 from functools import lru_cache
 from typing import Any
 
@@ -44,22 +42,20 @@ def generate_embedding(text: str) -> list[float] | None:
 
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
-    """Calculate cosine similarity between two vectors."""
-    a = np.array(vec_a, dtype=np.float32)
-    b = np.array(vec_b, dtype=np.float32)
-    # Vectors are already normalized, so dot product = cosine similarity
-    return float(np.dot(a, b))
+    """Calculate cosine similarity between two normalized vectors (dot product)."""
+    return float(np.dot(np.array(vec_a, dtype=np.float32), np.array(vec_b, dtype=np.float32)))
 
 
 def batch_cosine_similarity(query_vec: list[float], doc_vecs: list[list[float]]) -> list[float]:
-    """Calculate cosine similarity between query and multiple document vectors."""
-    q = np.array(query_vec, dtype=np.float32)
-    similarities = []
-    for dv in doc_vecs:
-        d = np.array(dv, dtype=np.float32)
-        sim = float(np.dot(q, d))
-        similarities.append(sim)
-    return similarities
+    """
+    Vectorized cosine similarity: one matmul instead of a Python loop.
+    Assumes all vectors are already L2-normalized (bge-m3 outputs are).
+    """
+    if not doc_vecs:
+        return []
+    q = np.array(query_vec, dtype=np.float32)          # (dim,)
+    D = np.array(doc_vecs, dtype=np.float32)            # (n, dim)
+    return (D @ q).tolist()                              # (n,)
 
 
 def rank_by_similarity(
@@ -68,17 +64,21 @@ def rank_by_similarity(
     top_k: int = 10,
 ) -> list[dict[str, Any]]:
     """
-    Rank chunks by cosine similarity to the query embedding.
+    Rank chunks by cosine similarity using a single batched matmul.
     Adds 'similarity_score' field to each chunk.
     """
+    valid = [(i, chunk) for i, chunk in enumerate(chunks) if chunk.get("embedding") is not None]
+    if not valid:
+        return []
+
+    indices, valid_chunks = zip(*valid)
+    doc_vecs = [c["embedding"] for c in valid_chunks]
+    scores = batch_cosine_similarity(query_embedding, doc_vecs)
+
     scored = []
-    for chunk in chunks:
-        emb = chunk.get("embedding")
-        if emb is None:
-            continue
-        sim = cosine_similarity(query_embedding, emb)
+    for chunk, sim in zip(valid_chunks, scores):
         chunk_copy = dict(chunk)
-        chunk_copy["similarity_score"] = round(sim, 4)
+        chunk_copy["similarity_score"] = round(float(sim), 4)
         scored.append(chunk_copy)
 
     scored.sort(key=lambda x: x["similarity_score"], reverse=True)

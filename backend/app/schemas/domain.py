@@ -33,6 +33,7 @@ class VendorCreate(BaseModel):
 class VendorRead(VendorCreate, ORMModel):
     id: int
     created_at: datetime
+    updated_at: datetime
 
 
 class ProjectCreate(BaseModel):
@@ -43,6 +44,7 @@ class ProjectCreate(BaseModel):
 class ProjectRead(ProjectCreate, ORMModel):
     id: int
     created_at: datetime
+    updated_at: datetime
 
 
 class SiteCreate(BaseModel):
@@ -55,6 +57,7 @@ class SiteCreate(BaseModel):
 class SiteRead(SiteCreate, ORMModel):
     id: int
     created_at: datetime
+    updated_at: datetime
 
 
 class ContractCreate(BaseModel):
@@ -70,19 +73,19 @@ class ContractCreate(BaseModel):
 class ContractRead(ContractCreate, ORMModel):
     id: int
     created_at: datetime
+    updated_at: datetime
 
 
 class DocumentRead(ORMModel):
     id: int
     title: str
     document_type: str
-    vendor_id: int | None = None
-    project_id: int | None = None
-    site_id: int | None = None
     contract_id: int | None = None
     original_filename: str | None = None
     processing_status: str
     uploaded_at: datetime
+    created_at: datetime
+    updated_at: datetime
 
 
 class ChunkRead(ORMModel):
@@ -126,11 +129,14 @@ class GapRunRequest(BaseModel):
     topic_key: str
 
 
+class RunContractRequest(BaseModel):
+    contract_id: int
+    topic_keys: list[str] | None = None
+
+
 class RiskIssueRead(ORMModel):
     id: int
     contract_id: int | None = None
-    vendor_id: int | None = None
-    site_id: int | None = None
     issue_title: str
     issue_type: str
     risk_level: str

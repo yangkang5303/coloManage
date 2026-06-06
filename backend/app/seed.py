@@ -103,9 +103,6 @@ def seed():
                 doc = Document(
                     title=title,
                     document_type=doc_type,
-                    vendor_id=vendors[0].id,
-                    project_id=project.id,
-                    site_id=sites[0].id,
                     contract_id=contract.id,
                     original_filename=f"{title.lower().replace(' ', '_')}.txt",
                     file_path=str(storage / f"{title.lower().replace(' ', '_')}.txt"),

@@ -8,18 +8,12 @@ interface Document {
   id: number;
   title: string;
   document_type: string;
-  vendor_id: number | null;
-  project_id: number | null;
-  site_id: number | null;
   contract_id: number | null;
   original_filename: string | null;
   processing_status: string;
   uploaded_at: string;
 }
 
-interface Vendor { id: number; name: string; }
-interface Project { id: number; name: string; }
-interface Site { id: number; name: string; }
 interface Contract { id: number; title: string; }
 
 const docTypeOptions = ["RFP", "PROPOSAL", "CONTRACT", "SLA", "RATE_CARD", "INVOICE"];
@@ -34,25 +28,22 @@ const statusColors: Record<string, string> = {
   OCR_NOT_SUPPORTED_IN_MVP: "bg-orange-100 text-orange-700",
 };
 
-/** 判断文档是否已处理完成（后端返回 "processed" 或 "ready"） */
 function isProcessed(status: string): boolean {
   return status === "processed" || status === "ready";
 }
 
+function isInProgress(status: string): boolean {
+  return status === "queued" || status === "processing";
+}
+
 export default function Page() {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [sites, setSites] = useState<Site[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: "",
     document_type: "CONTRACT",
-    vendor_id: "",
-    project_id: "",
-    site_id: "",
     contract_id: "",
   });
   const [file, setFile] = useState<File | null>(null);
@@ -64,17 +55,11 @@ export default function Page() {
 
   async function load() {
     try {
-      const [docs, vendorsData, projectsData, sitesData, contractsData] = await Promise.all([
+      const [docs, contractsData] = await Promise.all([
         apiGet("/documents"),
-        apiGet("/vendors"),
-        apiGet("/projects"),
-        apiGet("/sites"),
         apiGet("/contracts"),
       ]);
       setDocuments(docs);
-      setVendors(vendorsData);
-      setProjects(projectsData);
-      setSites(sitesData);
       setContracts(contractsData);
     } catch (e: any) {
       setError(e.message);
@@ -84,6 +69,14 @@ export default function Page() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Poll every 2s while any document is queued or processing
+  useEffect(() => {
+    const hasInProgress = documents.some((d) => isInProgress(d.processing_status));
+    if (!hasInProgress) return;
+    const timer = setInterval(load, 2000);
+    return () => clearInterval(timer);
+  }, [documents]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,14 +90,11 @@ export default function Page() {
       const formData = new FormData();
       formData.append("title", form.title);
       formData.append("document_type", form.document_type);
-      if (form.vendor_id) formData.append("vendor_id", form.vendor_id);
-      if (form.project_id) formData.append("project_id", form.project_id);
-      if (form.site_id) formData.append("site_id", form.site_id);
       if (form.contract_id) formData.append("contract_id", form.contract_id);
       formData.append("file", file);
 
       await apiPost("/documents/upload", formData, true);
-      setForm({ title: "", document_type: "CONTRACT", vendor_id: "", project_id: "", site_id: "", contract_id: "" });
+      setForm({ title: "", document_type: "CONTRACT", contract_id: "" });
       setFile(null);
       setShowForm(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -199,61 +189,18 @@ export default function Page() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
-                  <select
-                    value={form.vendor_id}
-                    onChange={(e) => setForm({ ...form, vendor_id: e.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">-- None --</option>
-                    {vendors.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Project</label>
-                  <select
-                    value={form.project_id}
-                    onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">-- None --</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Site</label>
-                  <select
-                    value={form.site_id}
-                    onChange={(e) => setForm({ ...form, site_id: e.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">-- None --</option>
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Contract</label>
-                  <select
-                    value={form.contract_id}
-                    onChange={(e) => setForm({ ...form, contract_id: e.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">-- None --</option>
-                    {contracts.map((c) => (
-                      <option key={c.id} value={c.id}>{c.title}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Contract</label>
+                <select
+                  value={form.contract_id}
+                  onChange={(e) => setForm({ ...form, contract_id: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">-- None --</option>
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">File *</label>
@@ -341,7 +288,13 @@ export default function Page() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                  {!isProcessed(doc.processing_status) && doc.processing_status !== "error" && (
+                  {isInProgress(doc.processing_status) && (
+                    <span className="flex items-center gap-1 text-xs text-blue-600">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      {doc.processing_status === "queued" ? "Queued..." : "Processing..."}
+                    </span>
+                  )}
+                  {!isProcessed(doc.processing_status) && !isInProgress(doc.processing_status) && doc.processing_status !== "error" && (
                     <button
                       onClick={() => handleProcess(doc.id)}
                       disabled={processingId === doc.id}
@@ -349,7 +302,7 @@ export default function Page() {
                       title="Parse & chunk document"
                     >
                       {processingId === doc.id ? (
-                        <><Loader2 className="h-3 w-3 animate-spin" /> Processing...</>
+                        <><Loader2 className="h-3 w-3 animate-spin" /> Starting...</>
                       ) : (
                         <><Play className="h-3 w-3" /> Process</>
                       )}
