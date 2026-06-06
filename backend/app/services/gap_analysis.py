@@ -1,16 +1,21 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.models.domain import Contract, GapAnalysis, RiskIssue
+
+logger = logging.getLogger(__name__)
 from app.services.llm_gateway import LLMGateway
 from app.services.retrieval import get_evidence_pack
 from app.services.rules import run_rule_engine
 
 
-def run_topic_gap_analysis(db: Session, contract_id: int, topic_key: str) -> dict:
+async def run_topic_gap_analysis(db: Session, contract_id: int, topic_key: str) -> dict:
+    logger.info("gap_analysis: start contract_id=%d topic=%s", contract_id, topic_key)
     contract = db.get(Contract, contract_id)
     evidence_pack = get_evidence_pack(db, topic_key, contract_id)
     cited_chunk_ids = [item["chunk_id"] for key, values in evidence_pack.items() if key.endswith("_evidence") for item in values]
-    ai = LLMGateway(db).run("compare_topic_evidence", evidence_pack, cited_chunk_ids=cited_chunk_ids)
+    ai = await LLMGateway(db).run("compare_topic_evidence", evidence_pack, cited_chunk_ids=cited_chunk_ids)
     rules = run_rule_engine(topic_key, evidence_pack)
 
     rfp_found = bool(evidence_pack["rfp_evidence"])
@@ -40,8 +45,6 @@ def run_topic_gap_analysis(db: Session, contract_id: int, topic_key: str) -> dic
     if gap_type not in {"INCLUDED", "EVIDENCE_NOT_FOUND"}:
         risk_issue = RiskIssue(
             contract_id=contract_id,
-            vendor_id=contract.vendor_id if contract else None,
-            site_id=contract.site_id if contract else None,
             issue_title=f"{topic_key}: {gap_type}",
             issue_type=gap_type,
             risk_level=rules["risk_level"],
@@ -56,6 +59,10 @@ def run_topic_gap_analysis(db: Session, contract_id: int, topic_key: str) -> dic
         db.commit()
         db.refresh(risk_issue)
 
+    logger.info(
+        "gap_analysis: done contract_id=%d topic=%s gap_type=%s risk=%s",
+        contract_id, topic_key, gap_type, rules["risk_level"],
+    )
     return {
         "topic_key": topic_key,
         "rfp_requirement_found": rfp_found,

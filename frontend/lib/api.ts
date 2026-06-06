@@ -47,6 +47,17 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
     headers,
     cache: "no-store",
   });
+  if (res.status === 401) {
+    // Token expired or invalid — clear it and redirect to login
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(TOKEN_KEY);
+      const currentPath = window.location.pathname;
+      if (currentPath !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
   if (!res.ok) {
     const err = await res.text().catch(() => "Request failed");
     throw new Error(err);

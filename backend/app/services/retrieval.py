@@ -44,7 +44,7 @@ def search_chunks(
     if document_type:
         q = q.filter(Document.document_type == document_type)
 
-    rows = q.limit(200).all()
+    rows = q.limit(get_settings().search_candidate_limit).all()
     if not rows:
         return []
 
@@ -60,7 +60,7 @@ def search_chunks(
             ]
             cosine_scores = {
                 item["chunk_id"]: item["similarity_score"]
-                for item in rank_by_similarity(query_embedding, chunks_with_embeddings, top_k=200)
+                for item in rank_by_similarity(query_embedding, chunks_with_embeddings, top_k=get_settings().search_candidate_limit)
             }
 
     for item in scored:

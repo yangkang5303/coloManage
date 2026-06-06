@@ -1,6 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env relative to the repo root (two levels above this file),
+# so both `cd backend && uvicorn ...` and Docker (env_file: .env) work.
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
@@ -21,7 +26,13 @@ class Settings(BaseSettings):
     embedding_dim: int = 1024
     embedding_enabled: bool = True
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Search settings
+    search_candidate_limit: int = 200  # Max chunks loaded into memory per search query
+
+    # Rate limiting (requests per minute per IP for AI/gap-analysis endpoints)
+    ai_rate_limit: str = "20/minute"
+
+    model_config = SettingsConfigDict(env_file=str(_ROOT_ENV), env_file_encoding="utf-8", extra="ignore")
 
     @property
     def cors_origins(self) -> list[str]:

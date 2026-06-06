@@ -1,12 +1,20 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class UpdatedAtMixin(TimestampMixin):
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class User(Base, TimestampMixin):
@@ -19,7 +27,7 @@ class User(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(50), default="reviewer")
 
 
-class Vendor(Base, TimestampMixin):
+class Vendor(Base, UpdatedAtMixin):
     __tablename__ = "vendors"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -28,7 +36,7 @@ class Vendor(Base, TimestampMixin):
     country: Mapped[str | None] = mapped_column(String(100))
 
 
-class Project(Base, TimestampMixin):
+class Project(Base, UpdatedAtMixin):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -36,7 +44,7 @@ class Project(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text)
 
 
-class Site(Base, TimestampMixin):
+class Site(Base, UpdatedAtMixin):
     __tablename__ = "sites"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -46,7 +54,7 @@ class Site(Base, TimestampMixin):
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"))
 
 
-class Contract(Base, TimestampMixin):
+class Contract(Base, UpdatedAtMixin):
     __tablename__ = "contracts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -59,15 +67,12 @@ class Contract(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(50), default="draft")
 
 
-class Document(Base):
+class Document(Base, UpdatedAtMixin):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), index=True)
     document_type: Mapped[str] = mapped_column(String(50), index=True)
-    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"))
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"))
-    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))
     contract_id: Mapped[int | None] = mapped_column(ForeignKey("contracts.id"), index=True)
     original_filename: Mapped[str | None] = mapped_column(String(255))
     file_path: Mapped[str | None] = mapped_column(String(500))
@@ -76,7 +81,7 @@ class Document(Base):
     text_content: Mapped[str | None] = mapped_column(Text)
     processing_status: Mapped[str] = mapped_column(String(50), default="uploaded")
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     chunks: Mapped[list["DocumentChunk"]] = relationship(cascade="all, delete-orphan")
 
 
@@ -101,8 +106,6 @@ class Obligation(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     contract_id: Mapped[int | None] = mapped_column(ForeignKey("contracts.id"))
-    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"))
-    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))
     obligation_type: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text)
     source_document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
@@ -147,8 +150,6 @@ class RiskIssue(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     contract_id: Mapped[int | None] = mapped_column(ForeignKey("contracts.id"), index=True)
-    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"))
-    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))
     issue_title: Mapped[str] = mapped_column(String(255))
     issue_type: Mapped[str] = mapped_column(String(100), index=True)
     risk_level: Mapped[str] = mapped_column(String(50), index=True)
@@ -159,8 +160,8 @@ class RiskIssue(Base):
     related_evidence_json: Mapped[dict | list | None] = mapped_column(JSON)
     human_review_status: Mapped[str] = mapped_column(String(50), default="pending")
     owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class CeoBrief(Base, TimestampMixin):

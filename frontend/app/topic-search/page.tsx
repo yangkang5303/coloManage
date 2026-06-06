@@ -61,14 +61,14 @@ const DOCUMENT_TYPE_COLORS: Record<string, string> = {
 
 export default function TopicSearchPage() {
   const [topicKey, setTopicKey] = useState("p1_response_time");
-  const [contractId, setContractId] = useState("1");
+  const [contractId, setContractId] = useState("");
   const [keywords, setKeywords] = useState("");
   const [result, setResult] = useState<EvidencePack | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [topics, setTopics] = useState<TopicOption[]>([]);
+  const [contracts, setContracts] = useState<{ id: number; title: string }[]>([]);
 
-  // 从 API 动态加载话题列表
   useEffect(() => {
     apiGet("/search/topics")
       .then((data: TopicOption[]) => {
@@ -76,12 +76,18 @@ export default function TopicSearchPage() {
         if (data.length > 0) setTopicKey(data[0].key);
       })
       .catch(() => undefined);
+    apiGet("/contracts")
+      .then((data: { id: number; title: string }[]) => {
+        setContracts(data);
+        if (data.length > 0) setContractId(String(data[0].id));
+      })
+      .catch(() => undefined);
   }, []);
 
   async function run() {
     const customKeywords = keywords.trim();
-    if (!contractId || Number.isNaN(Number(contractId))) {
-      setError("请输入有效的合同 ID");
+    if (!contractId) {
+      setError("请选择合同");
       return;
     }
     setLoading(true);
@@ -133,57 +139,63 @@ export default function TopicSearchPage() {
       <h1 className="mb-6 text-2xl font-semibold">Topic Evidence Search</h1>
 
       {/* 搜索表单 */}
-      <div className="mb-6 flex gap-3 items-end flex-wrap">
+      <div className="mb-6 space-y-3">
+        {/* 第一行：合同选择 */}
         <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">
-            合同 ID
-          </label>
-          <input
-            className="rounded-md border border-line px-3 py-2 w-32"
+          <label className="mb-1 block text-sm font-medium text-slate-700">合同</label>
+          <select
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={contractId}
             onChange={(e) => setContractId(e.target.value)}
-            placeholder="合同 ID"
-          />
-        </div>
-        <div className="flex-1 min-w-[280px]">
-          <label className="block text-sm font-medium text-gray-600 mb-1">
-            自定义关键词（优先）
-          </label>
-          <input
-            className="rounded-md border border-line px-3 py-2 w-full"
-            value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") run(); }}
-            placeholder="输入关键词，支持空格或逗号分隔，如：SLA 可用性 赔偿"
-          />
-          <p className="mt-1 text-xs text-gray-400">结果按关键词匹配分与 cosine 相似度加权排序</p>
-        </div>
-        <div className="flex-1 min-w-[280px]">
-          <label className="block text-sm font-medium text-gray-600 mb-1">
-            或选择预设话题
-          </label>
-          <select
-            className="rounded-md border border-line px-3 py-2 w-full bg-white"
-            value={topicKey}
-            onChange={(e) => setTopicKey(e.target.value)}
           >
-            {topics.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
+            {contracts.length === 0 && <option value="">暂无合同</option>}
+            {contracts.map((c) => (
+              <option key={c.id} value={c.id}>{c.title}</option>
             ))}
           </select>
-          {currentTopicDesc && (
-            <p className="mt-1 text-xs text-gray-400">{currentTopicDesc}</p>
-          )}
         </div>
-        <button
-          className="rounded-md bg-action px-6 py-2 text-white hover:opacity-90 disabled:opacity-50"
-          onClick={run}
-          disabled={loading}
-        >
-          {loading ? "搜索中..." : "搜索"}
-        </button>
+
+        {/* 第二行：预设话题 + 自定义关键词 + 搜索按钮 */}
+        <div className="flex items-end gap-3">
+          <div className="w-56 flex-shrink-0">
+            <label className="mb-1 block text-sm font-medium text-slate-700">预设话题</label>
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={topicKey}
+              onChange={(e) => { setTopicKey(e.target.value); setKeywords(""); }}
+            >
+              {topics.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              自定义关键词 <span className="font-normal text-slate-400">（填写后优先于预设话题）</span>
+            </label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") run(); }}
+              placeholder="如：SLA 可用性 赔偿"
+            />
+          </div>
+
+          <button
+            className="flex-shrink-0 rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ height: "38px" }}
+            onClick={run}
+            disabled={loading || !contractId}
+          >
+            {loading ? "搜索中…" : "搜索"}
+          </button>
+        </div>
+
+        {currentTopicDesc && !keywords.trim() && (
+          <p className="text-xs text-slate-400">{currentTopicDesc}</p>
+        )}
       </div>
 
       {/* 错误提示 */}
@@ -197,7 +209,7 @@ export default function TopicSearchPage() {
       {result && !error && (
         <div className="mb-4 flex gap-4 text-sm text-gray-600">
           <span>话题: <strong>{currentTopicLabel}</strong></span>
-          <span>合同 ID: <strong>{result.contract_id}</strong></span>
+          <span>合同: <strong>{contracts.find((c) => c.id === result.contract_id)?.title ?? result.contract_id}</strong></span>
           <span>证据总数: <strong>{totalEvidence}</strong></span>
         </div>
       )}
@@ -209,7 +221,7 @@ export default function TopicSearchPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 w-28">
-                  得分
+                  相关度
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 w-28">
                   文档类型
