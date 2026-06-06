@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_admin_user, get_current_user
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.domain import Contract, Document, DocumentChunk, Obligation, Project, RiskIssue, Site, User, Vendor
@@ -219,8 +219,14 @@ def contract_risks(item_id: int, db: Session = Depends(get_db), _: User = Depend
     return db.query(RiskIssue).filter(RiskIssue.contract_id == item_id).order_by(RiskIssue.id).all()
 
 
+def _redact_url(url: str) -> str:
+    """Replace user:password@ in a connection URL with ***:***@."""
+    import re
+    return re.sub(r"://[^@]+@", "://***:***@", url)
+
+
 @router.get("/admin/settings")
-def admin_settings(_: User = Depends(get_current_user)):
+def admin_settings(_: User = Depends(get_admin_user)):
     s = get_settings()
     return {
         "llm": {
@@ -231,7 +237,7 @@ def admin_settings(_: User = Depends(get_current_user)):
             "timeout_seconds": s.llm_timeout_seconds,
         },
         "database": {
-            "url": s.database_url,
+            "url": _redact_url(s.database_url),
         },
         "storage": {
             "dir": s.storage_dir,

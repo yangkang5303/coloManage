@@ -147,7 +147,7 @@ def dashboard_summary(db: Session = Depends(get_db), _: User = Depends(get_curre
             "llm_api_key_set": bool(s.llm_api_key and s.llm_api_key != "changeme"),
             "llm_model": s.llm_medium_model,
             "embedding_enabled": s.embedding_enabled,
-            "database_url": s.database_url,
+            "database_url": __import__("re").sub(r"://[^@]+@", "://***:***@", s.database_url),
         },
         "recent_audit": [
             {"id": r.id, "action": r.action, "entity_type": r.entity_type, "entity_id": r.entity_id, "created_at": r.created_at.isoformat()}
