@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024
     embedding_enabled: bool = True
+    embedding_local_files_only: bool = True
 
     # Search settings
-    search_candidate_limit: int = 200  # Max chunks loaded into memory per search query
+    search_candidate_limit: int = 200  # Max non-keyword vector candidates scored in memory per search query
 
     # Rate limiting (requests per minute per IP for AI/gap-analysis endpoints)
     ai_rate_limit: str = "20/minute"

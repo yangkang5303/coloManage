@@ -14,7 +14,7 @@
 | 队列 / 缓存 | Redis 7 | `6379` |
 | 可选对象存储 | MinIO | `9000`（API）、`9001`（控制台） |
 
-不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 会在首次生成嵌入时由 `sentence-transformers` 下载，因此启用嵌入时后端需要网络连接和足够的模型存储空间；也可以通过配置关闭嵌入。
+不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 由 `sentence-transformers` 在本地执行嵌入推理。上传的文档文本会在后端进程内本地生成嵌入，不会发送到 Hugging Face 或云端 embedding API。防火墙环境应先离线下载或挂载模型，再处理文档。
 
 ## 项目简介
 
@@ -28,7 +28,7 @@ Colo 是面向企业内网部署的、证据优先的 AI 辅助合同执行智�
 - 供应商、项目、站点、合同管理，以及合同关联的文档、文本块、义务和风险查看。
 - 支持纯文本、DOCX、XLSX 和文本型 PDF 的上传、处理、查看与删除。
 - 文本块保留页码、工作表名称、章节标题和条款编号等元数据。
-- 将关键词匹配与多语言嵌入相似度结合的混合搜索。
+- 将关键词匹配与本地计算的多语言嵌入相似度结合的混合搜索。
 - 按指定合同范围执行主题词典证据检索。
 - 基于证据的文档分类、带来源问答、义务抽取、主题证据对比、风险草稿和 CEO 简报生成。
 - 支持单个主题或整份合同的规则化差距分析。
@@ -49,7 +49,7 @@ FastAPI 后端（8000） ---- 企业内部 OpenAI 兼容 LLM 网关
         +---- SQLite（可选本地冒烟测试）
         +---- Redis 7
         +---- 本地文档存储 / MinIO 服务
-        +---- sentence-transformers 多语言嵌入
+        +---- 本地 sentence-transformers 多语言嵌入
 ```
 
 LLM 网关可通过环境变量配置，项目没有硬编码任何公共商业模型接口。模型只接收检索出的证据文本块，不接收完整合同。
@@ -139,11 +139,12 @@ npm run lint
 | `LLM_SMALL_MODEL` | 小型 AI 任务所用模型 | `internal-9b` |
 | `LLM_MEDIUM_MODEL` | 较大型 AI 任务所用模型 | `internal-14b` |
 | `LLM_TIMEOUT_SECONDS` | LLM 请求超时时间 | `120` |
-| `EMBEDDING_MODEL` | sentence-transformers 嵌入模型 | `BAAI/bge-m3` |
+| `EMBEDDING_MODEL` | sentence-transformers 模型 ID、本地路径或缓存模型 ID | `BAAI/bge-m3` |
 | `EMBEDDING_DIM` | 预期嵌入维度 | `1024` |
-| `EMBEDDING_ENABLED` | 是否在混合搜索中启用语义评分 | `true` |
+| `EMBEDDING_ENABLED` | 是否在混合搜索中启用本地语义评分 | `true` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止文档处理期间从远程 Hub 下载嵌入模型文件 | `true` |
 
-嵌入模型不可用时，可设置 `EMBEDDING_ENABLED=false`；搜索会继续使用关键词评分。
+嵌入生成是本地推理：文档块和查询文本不会上传到 Hugging Face 进行 embedding。你看到的 Hugging Face URL（例如 `BAAI/bge-m3/resolve/main/adapter_config.json`）是 `sentence-transformers` 在查找/下载模型文件，不是上传文档。若部署在防火墙或无公网环境，请先离线下载或挂载嵌入模型，将 `EMBEDDING_MODEL` 指向本地路径或本地缓存 ID，并保持 `EMBEDDING_LOCAL_FILES_ONLY=true`。仅在允许联网下载模型的环境中，才设置 `EMBEDDING_LOCAL_FILES_ONLY=false`；仅当需要关闭语义评分时，才设置 `EMBEDDING_ENABLED=false`。
 
 ## 主要使用流程
 
@@ -180,7 +181,7 @@ npm run lint
 
 - 支持纯文本、DOCX、XLSX 和文本型 PDF 解析。
 - 不支持 OCR 和扫描型 PDF。PDF 可提取文字过少时会返回 `OCR_NOT_SUPPORTED_IN_MVP`。
-- 主题词典使用配置的关键词；启用嵌入后，自定义混合搜索支持多语言语义匹配。
+- 主题词典使用配置的关键词；启用嵌入后，自定义混合搜索会使用本地计算的嵌入叠加多语言语义匹配。
 - 为兼容 SQLite，嵌入以 JSON 兼容数组保存；当前 MVP 不使用专用向量数据库。
 - 规则引擎和 AI 只生成风险草稿，不构成最终法律结论。
 - 所有高风险结果和简报都必须经过人工复核后才能采取行动。
