@@ -1,35 +1,48 @@
 """
-Embedding service using sentence-transformers with BAAI/bge-m3 model.
-Supports both Chinese and English text for semantic search.
+Local embedding service using sentence-transformers.
 
-The model is loaded lazily and cached for reuse.
+The configured model may be downloaded once by sentence-transformers, but
+uploaded document text is embedded by the local Python process and is not sent
+to Hugging Face or any other cloud embedding API.
 Embeddings are stored as JSON arrays in SQLite for compatibility.
 """
+import importlib.util
+import logging
 from functools import lru_cache
 from typing import Any
 
 import numpy as np
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
-    """Load the embedding model once and cache it."""
-    try:
-        from sentence_transformers import SentenceTransformer
-        settings = get_settings()
-        model = SentenceTransformer(settings.embedding_model)
-        return model
-    except ImportError:
+    """Load the local sentence-transformers model once and cache it."""
+    settings = get_settings()
+    if not settings.embedding_enabled:
         return None
-    except Exception:
+    if importlib.util.find_spec("sentence_transformers") is None:
+        logger.info("sentence-transformers is not installed; embeddings are disabled")
+        return None
+
+    from sentence_transformers import SentenceTransformer
+
+    try:
+        return SentenceTransformer(
+            settings.embedding_model,
+            local_files_only=settings.embedding_local_files_only,
+        )
+    except Exception as exc:
+        logger.warning("Embedding model unavailable; continuing without vector embeddings: %s", exc)
         return None
 
 
 def generate_embedding(text: str) -> list[float] | None:
     """
-    Generate embedding vector for the given text.
-    Returns None if the model is not available.
+    Generate an embedding vector for the given text.
+    Returns None if the local model is disabled or unavailable.
     """
     model = get_embedding_model()
     if model is None:
@@ -37,7 +50,8 @@ def generate_embedding(text: str) -> list[float] | None:
     try:
         embedding = model.encode([text], normalize_embeddings=True)
         return embedding[0].tolist()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Embedding generation failed; continuing without vector embedding: %s", exc)
         return None
 
 

@@ -54,7 +54,8 @@ class SearchAndDocumentTests(unittest.TestCase):
         self.db.add_all([exact, semantic, unrelated])
         self.db.commit()
 
-        with patch("app.services.retrieval.get_settings", return_value=SimpleNamespace(embedding_enabled=True)), patch(
+        settings = SimpleNamespace(embedding_enabled=True, search_candidate_limit=200)
+        with patch("app.services.retrieval.get_settings", return_value=settings), patch(
             "app.services.retrieval.generate_embedding", return_value=[1.0, 0.0]
         ):
             results = search_chunks(self.db, "SLA response", contract_id=self.contract.id, limit=10)
@@ -64,6 +65,34 @@ class SearchAndDocumentTests(unittest.TestCase):
         self.assertNotIn(unrelated.id, [item["chunk_id"] for item in results])
         self.assertTrue(all("keyword_score" in item and "cosine_score" in item and "combined_score" in item for item in results))
         self.assertEqual(pack["sla_evidence"][0]["chunk_id"], exact.id)
+
+    def test_keyword_search_finds_matches_beyond_vector_candidate_limit(self):
+        document = Document(title="Long MSA", document_type="CONTRACT", contract_id=self.contract.id)
+        self.db.add(document)
+        self.db.commit()
+        chunks = [
+            DocumentChunk(
+                document_id=document.id,
+                chunk_index=index,
+                text=f"Boilerplate section {index}",
+                search_text="",
+            )
+            for index in range(201)
+        ]
+        target = DocumentChunk(
+            document_id=document.id,
+            chunk_index=201,
+            text="Termination assistance must include migration support",
+            search_text="",
+        )
+        self.db.add_all([*chunks, target])
+        self.db.commit()
+
+        settings = SimpleNamespace(embedding_enabled=False, search_candidate_limit=200)
+        with patch("app.services.retrieval.get_settings", return_value=settings):
+            results = search_chunks(self.db, "migration support", contract_id=self.contract.id, limit=10)
+
+        self.assertEqual([item["chunk_id"] for item in results], [target.id])
 
     def test_delete_document_removes_file_chunks_and_topic_evidence(self):
         with tempfile.TemporaryDirectory() as directory:

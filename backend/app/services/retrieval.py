@@ -1,6 +1,7 @@
 import re
 from collections import defaultdict
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -38,21 +39,25 @@ def search_chunks(
     if not terms:
         return []
 
-    q = db.query(DocumentChunk, Document).join(Document, Document.id == DocumentChunk.document_id)
-    if contract_id is not None:
-        q = q.filter(Document.contract_id == contract_id)
-    if document_type:
-        q = q.filter(Document.document_type == document_type)
+    settings = get_settings()
+    q = _base_chunk_query(db, contract_id, document_type)
 
-    rows = q.limit(get_settings().search_candidate_limit).all()
-    if not rows:
-        return []
+    keyword_filter = _keyword_filter(terms)
+    # Do not apply search_candidate_limit to keyword matches. SQL can find exact
+    # matches anywhere in long documents, while the candidate limit is only a
+    # guardrail for broad vector scans that must be scored in Python.
+    rows = q.filter(keyword_filter).all()
 
-    scored = [_score_row(chunk, document, terms) for chunk, document in rows]
     cosine_scores: dict[int, float] = {}
-    if use_vector and get_settings().embedding_enabled:
+    if use_vector and settings.embedding_enabled:
         query_embedding = generate_embedding(query)
         if query_embedding:
+            vector_rows = _base_chunk_query(db, contract_id, document_type).filter(
+                DocumentChunk.embedding.isnot(None)
+            ).limit(settings.search_candidate_limit).all()
+            rows_by_chunk_id = {chunk.id: (chunk, document) for chunk, document in rows}
+            rows_by_chunk_id.update({chunk.id: (chunk, document) for chunk, document in vector_rows})
+            rows = list(rows_by_chunk_id.values())
             chunks_with_embeddings = [
                 {"chunk_id": chunk.id, "embedding": chunk.embedding}
                 for chunk, _ in rows
@@ -60,8 +65,17 @@ def search_chunks(
             ]
             cosine_scores = {
                 item["chunk_id"]: item["similarity_score"]
-                for item in rank_by_similarity(query_embedding, chunks_with_embeddings, top_k=get_settings().search_candidate_limit)
+                for item in rank_by_similarity(
+                    query_embedding,
+                    chunks_with_embeddings,
+                    top_k=len(chunks_with_embeddings),
+                )
             }
+
+    if not rows:
+        return []
+
+    scored = [_score_row(chunk, document, terms) for chunk, document in rows]
 
     for item in scored:
         cosine_score = cosine_scores.get(item["chunk_id"], 0.0)
@@ -81,6 +95,19 @@ def search_chunks(
     scored = [item for item in scored if item["combined_score"] > 0]
     scored.sort(key=lambda item: item["combined_score"], reverse=True)
     return scored[:limit]
+
+
+def _base_chunk_query(db: Session, contract_id: int | None, document_type: str | None):
+    q = db.query(DocumentChunk, Document).join(Document, Document.id == DocumentChunk.document_id)
+    if contract_id is not None:
+        q = q.filter(Document.contract_id == contract_id)
+    if document_type:
+        q = q.filter(Document.document_type == document_type)
+    return q
+
+
+def _keyword_filter(terms: list[str]):
+    return or_(*(func.lower(DocumentChunk.text).contains(term.lower()) for term in terms))
 
 
 def search_by_topic(db: Session, topic_key: str, contract_id: int | None) -> list[dict]:
