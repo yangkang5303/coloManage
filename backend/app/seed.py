@@ -4,7 +4,7 @@ from app.core.config import get_settings
 from app.core.security import get_password_hash
 from app.db.session import Base, SessionLocal, engine
 from app.models.domain import Contract, Document, DocumentChunk, Project, Site, User, Vendor
-from app.services.embedding import generate_embedding
+from app.services.embedding import generate_embeddings
 from app.services.parser import split_into_chunks, ParsedBlock
 
 
@@ -114,11 +114,10 @@ def seed():
                 Path(doc.file_path).write_text(text, encoding="utf-8")
                 db.add(doc)
                 db.flush()
-                for index, chunk in enumerate(split_into_chunks([ParsedBlock(text=text)])):
-                    # Generate embedding if enabled
-                    embedding = None
-                    if settings.embedding_enabled:
-                        embedding = generate_embedding(chunk.text)
+                chunks = split_into_chunks([ParsedBlock(text=text)])
+                embeddings = generate_embeddings([chunk.text for chunk in chunks]) if settings.embedding_enabled else []
+                for index, chunk in enumerate(chunks):
+                    embedding = embeddings[index] if index < len(embeddings) else None
                     db.add(DocumentChunk(
                         document_id=doc.id,
                         chunk_index=index,

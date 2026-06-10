@@ -14,7 +14,7 @@ Docker Compose is the recommended runtime. The included containers use the follo
 | Queue / cache | Redis 7 | `6379` |
 | Optional object storage | MinIO | `9000` (API), `9001` (console) |
 
-For local development without Docker, use Python 3.12 and Node.js 22. SQLite can replace PostgreSQL for backend smoke tests. Docker Engine with the Docker Compose plugin is required for the recommended setup. The default embedding model, `BAAI/bge-m3`, may be downloaded by `sentence-transformers` when embedding generation is first used, but uploaded document text is embedded locally in the backend process and is not sent to Hugging Face or a cloud embedding API.
+For local development without Docker, use Python 3.12 and Node.js 22. SQLite can replace PostgreSQL for backend smoke tests. Docker Engine with the Docker Compose plugin is required for the recommended setup. The default local embedding model is `Qwen/Qwen3-Embedding-0.6B`. You can also set `EMBEDDING_PROVIDER=openai` and use an OpenAI-compatible model such as `text-embedding-3-small` or `text-embedding-3-large`. Document chunks are vectorized during processing and stored with their embeddings for vector retrieval/RAG.
 
 ## Overview
 
@@ -28,8 +28,8 @@ AI-generated results are constrained to retrieved evidence. When evidence cannot
 - Vendor, project, site, and contract records with contract-related documents, chunks, obligations, and risks.
 - Document upload, processing, inspection, and deletion for text, DOCX, XLSX, and text-based PDF files.
 - Chunk metadata such as page number, sheet name, section title, and clause reference.
-- Hybrid document search that combines keyword matching with locally computed multilingual embedding similarity.
-- Topic-dictionary evidence retrieval scoped to a selected contract.
+- Vector-first RAG search over processed document chunks, using generated embeddings and persisted vectors.
+- Topic evidence retrieval that embeds topic label/description/keywords as the semantic query scoped to a selected contract.
 - Evidence-backed AI operations for document classification, sourced chat, obligation extraction, topic comparison, risk issue drafting, and CEO brief generation.
 - Rule-based gap analysis for one topic or an entire contract.
 - Risk review actions: confirm, reject, or request legal review.
@@ -49,7 +49,7 @@ FastAPI backend (8000) ---- OpenAI-compatible internal LLM gateway
         +---- SQLite (optional local smoke-test persistence)
         +---- Redis 7
         +---- Local document storage / MinIO service
-        +---- Local sentence-transformers multilingual embeddings
+        +---- Embedding provider (local Qwen3 or OpenAI text-embedding-3)
 ```
 
 The LLM gateway is configurable and no public commercial model endpoint is hard-coded. The model receives retrieved evidence chunks rather than complete contracts.
@@ -139,12 +139,16 @@ The project reads backend settings from environment variables. Start with `.env.
 | `LLM_SMALL_MODEL` | Model used for smaller AI tasks | `internal-9b` |
 | `LLM_MEDIUM_MODEL` | Model used for larger AI tasks | `internal-14b` |
 | `LLM_TIMEOUT_SECONDS` | LLM request timeout | `120` |
-| `EMBEDDING_MODEL` | Sentence-transformers model id, local path, or cached model id | `BAAI/bge-m3` |
+| `EMBEDDING_PROVIDER` | Embedding backend: `local` or `openai` | `local` |
+| `EMBEDDING_MODEL` | Local sentence-transformers model/path or OpenAI-compatible embedding model | `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DIM` | Expected embedding dimension | `1024` |
-| `EMBEDDING_ENABLED` | Enables local semantic scoring in hybrid search | `true` |
-| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading embedding model files from remote hubs | `false` |
+| `EMBEDDING_ENABLED` | Enables vector generation and vector retrieval | `true` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading local embedding model files from remote hubs | `false` |
+| `EMBEDDING_BASE_URL` | OpenAI-compatible embeddings base URL when `EMBEDDING_PROVIDER=openai` | `https://api.openai.com/v1` |
+| `EMBEDDING_API_KEY` | API key for OpenAI-compatible embeddings | empty |
+| `VECTOR_SCORE_THRESHOLD` | Minimum cosine score returned by vector search | `0.05` |
 
-Embedding generation is local inference: `sentence-transformers` may download model files, but document chunks and query text are not uploaded to Hugging Face for embedding. For air-gapped deployments, pre-download or mount the embedding model locally, set `EMBEDDING_MODEL` to that local path or cache id, and set `EMBEDDING_LOCAL_FILES_ONLY=true`. Set `EMBEDDING_ENABLED=false` only when semantic scoring should be disabled.
+Document processing generates an embedding for each chunk and stores the vector on the chunk record. Topic Search now uses vector retrieval for RAG: preset topics are converted to semantic query text from label, description, and keywords, while ad-hoc queries are embedded directly. With `EMBEDDING_PROVIDER=local`, inference runs through `sentence-transformers` (for example Qwen3-Embedding). With `EMBEDDING_PROVIDER=openai`, the backend calls an OpenAI-compatible `/embeddings` endpoint such as `text-embedding-3-small` or `text-embedding-3-large`. Set `EMBEDDING_ENABLED=false` only when semantic retrieval should fall back to keyword matching.
 
 ## Main Workflows
 
@@ -181,7 +185,7 @@ The current frontend includes Dashboard, Vendors, Projects, Sites, Contracts, Do
 
 - Supported parsers: plain text, DOCX, XLSX, and text-based PDF.
 - OCR and scanned PDFs are not supported. A PDF with too little extractable text returns `OCR_NOT_SUPPORTED_IN_MVP`.
-- The topic dictionary uses configured keywords, while custom hybrid search supports multilingual semantic matching with locally computed embeddings when embeddings are enabled.
+- Topic Search is vector-first: configured topic text and custom queries are embedded, then matched against persisted chunk vectors for RAG evidence retrieval.
 - Embeddings are stored as JSON-compatible arrays for SQLite compatibility; this MVP does not use a dedicated vector database.
 - The rule engine and AI create draft findings, not final legal conclusions.
 - All high-risk findings and briefs require human review before action.

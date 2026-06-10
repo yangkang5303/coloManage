@@ -22,13 +22,20 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 120
 
     # Embedding settings
-    embedding_model: str = "BAAI/bge-m3"
-    embedding_dim: int = 1024
+    # Provider options: "local" (sentence-transformers, e.g. Qwen3-Embedding) or "openai"
+    # (OpenAI-compatible /embeddings endpoint, e.g. text-embedding-3-small/large).
+    embedding_provider: str = "local"
+    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    embedding_dim: int = 1024  # Stored for vector database/schema validation when using fixed-size vector indexes.
     embedding_enabled: bool = True
     embedding_local_files_only: bool = False
+    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_api_key: str = ""
+    embedding_timeout_seconds: int = 60
 
     # Search settings
-    search_candidate_limit: int = 200  # Max non-keyword vector candidates scored in memory per search query
+    search_candidate_limit: int = 200  # Max vector candidates scored per search query
+    vector_score_threshold: float = 0.05
 
     # Rate limiting (requests per minute per IP for AI/gap-analysis endpoints)
     ai_rate_limit: str = "20/minute"

@@ -43,5 +43,5 @@ def api_keyword_topic_search(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Use user-provided keywords and cosine similarity to build a topic evidence pack."""
+    """Use user-provided text as a semantic vector query to build a RAG evidence pack."""
     return get_keyword_evidence_pack(db, payload.keywords, payload.contract_id, payload.limit)
