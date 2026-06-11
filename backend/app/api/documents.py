@@ -14,7 +14,7 @@ from app.db.session import get_db
 from app.models.domain import Document, DocumentChunk, Obligation, TopicEvidence, User
 from app.schemas.domain import DocumentRead
 from app.services.audit import audit
-from app.services.embedding import generate_embedding
+from app.services.embedding import generate_embeddings
 from app.services.parser import UnsupportedOCR, file_sha256, parse_document, split_into_chunks
 
 
@@ -148,8 +148,9 @@ def _run_processing(document_id: int, user_id: int) -> None:
         try:
             row.text_content = "\n\n".join(block.text for block in blocks)
             settings = get_settings()
+            embeddings = generate_embeddings([chunk.text for chunk in chunks]) if settings.embedding_enabled else []
             for index, chunk in enumerate(chunks):
-                embedding = generate_embedding(chunk.text) if settings.embedding_enabled else None
+                embedding = embeddings[index] if index < len(embeddings) else None
                 db.add(
                     DocumentChunk(
                         document_id=row.id,

@@ -26,7 +26,7 @@ class SearchAndDocumentTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    def test_custom_keyword_search_combines_keyword_and_cosine_scores(self):
+    def test_semantic_search_uses_vector_scores_for_rag(self):
         document = Document(title="SLA", document_type="SLA", contract_id=self.contract.id)
         self.db.add(document)
         self.db.commit()
@@ -54,17 +54,18 @@ class SearchAndDocumentTests(unittest.TestCase):
         self.db.add_all([exact, semantic, unrelated])
         self.db.commit()
 
-        settings = SimpleNamespace(embedding_enabled=True, search_candidate_limit=200)
+        settings = SimpleNamespace(embedding_enabled=True, search_candidate_limit=200, vector_score_threshold=0.05)
         with patch("app.services.retrieval.get_settings", return_value=settings), patch(
             "app.services.retrieval.generate_embedding", return_value=[1.0, 0.0]
         ):
             results = search_chunks(self.db, "SLA response", contract_id=self.contract.id, limit=10)
             pack = get_keyword_evidence_pack(self.db, "SLA response", self.contract.id)
 
-        self.assertEqual(results[0]["chunk_id"], exact.id)
+        self.assertEqual(results[0]["chunk_id"], semantic.id)
+        self.assertEqual(results[0]["retrieval_mode"], "vector")
         self.assertNotIn(unrelated.id, [item["chunk_id"] for item in results])
-        self.assertTrue(all("keyword_score" in item and "cosine_score" in item and "combined_score" in item for item in results))
-        self.assertEqual(pack["sla_evidence"][0]["chunk_id"], exact.id)
+        self.assertTrue(all("cosine_score" in item and "combined_score" in item for item in results))
+        self.assertEqual(pack["sla_evidence"][0]["chunk_id"], semantic.id)
 
     def test_keyword_search_finds_matches_beyond_vector_candidate_limit(self):
         document = Document(title="Long MSA", document_type="CONTRACT", contract_id=self.contract.id)
@@ -88,7 +89,7 @@ class SearchAndDocumentTests(unittest.TestCase):
         self.db.add_all([*chunks, target])
         self.db.commit()
 
-        settings = SimpleNamespace(embedding_enabled=False, search_candidate_limit=200)
+        settings = SimpleNamespace(embedding_enabled=False, search_candidate_limit=200, vector_score_threshold=0.05)
         with patch("app.services.retrieval.get_settings", return_value=settings):
             results = search_chunks(self.db, "migration support", contract_id=self.contract.id, limit=10)
 

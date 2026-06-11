@@ -24,6 +24,7 @@ interface EvidenceItem {
   score: number;
   combined_score?: number;
   keyword_score?: number;
+  retrieval_mode?: string;
   vector_score?: number;
   cosine_score?: number;
   evidence_text?: string;
@@ -210,14 +211,14 @@ export default function TopicSearchPage() {
 
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              自定义关键词 <span className="font-normal text-slate-400">（填写后优先于预设话题）</span>
+              自定义语义查询 <span className="font-normal text-slate-400">（填写后优先于预设话题）</span>
             </label>
             <input
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") run(); }}
-              placeholder="如：SLA 可用性 赔偿"
+              placeholder="如：SLA 可用性赔偿、P1 响应承诺"
             />
           </div>
 
@@ -309,9 +310,10 @@ export default function TopicSearchPage() {
                       <td className="px-4 py-3 text-gray-700">
                         {item.document_title}
                         <div className="text-xs text-gray-400 mt-1">
-                          {item.page_number != null && `P${item.page_number} `}
-                          {item.sheet_name && `${item.sheet_name} `}
-                          {item.chunk_index != null && `Chunk #${item.chunk_index}`}
+                          <div>Vec: {(item.cosine_score ?? item.vector_score)?.toFixed(2)}</div>
+                          {item.retrieval_mode === "keyword_fallback" && (
+                            <div>KW fallback: {item.keyword_score?.toFixed(2)}</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">

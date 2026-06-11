@@ -14,6 +14,7 @@
 | 队列 / 缓存 | Redis 7 | `6379` |
 | 可选对象存储 | MinIO | `9000`（API）、`9001`（控制台） |
 
+不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认本地嵌入模型为 `Qwen/Qwen3-Embedding-0.6B`。也可以设置 `EMBEDDING_PROVIDER=openai`，使用 `text-embedding-3-small` 或 `text-embedding-3-large` 等 OpenAI 兼容嵌入模型。文档切块会在处理阶段生成向量并持久化，用于后续向量检索/RAG。
 不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 由 `sentence-transformers` 在本地执行嵌入推理。上传的文档文本会在后端进程内本地生成嵌入，不会发送到 Hugging Face 或云端 embedding API。防火墙环境应先离线下载或挂载模型，再处理文档。
 
 ## 项目简介
@@ -28,8 +29,8 @@ Colo 是面向企业内网部署的、证据优先的 AI 辅助合同执行智�
 - 供应商、项目、站点、合同管理，以及合同关联的文档、文本块、义务和风险查看。
 - 支持纯文本、DOCX、XLSX 和文本型 PDF 的上传、处理、查看与删除。
 - 文本块保留页码、工作表名称、章节标题和条款编号等元数据。
-- 将关键词匹配与本地计算的多语言嵌入相似度结合的混合搜索。
-- 按指定合同范围执行主题词典证据检索。
+- 面向 RAG 的向量优先搜索：处理文档切块时生成 embedding，并对持久化向量执行相似度检索。
+- 针对选定合同范围的话题证据检索：将话题标签、描述和关键词向量化为语义查询。
 - 基于证据的文档分类、带来源问答、义务抽取、主题证据对比、风险草稿和 CEO 简报生成。
 - 支持单个主题或整份合同的规则化差距分析。
 - 支持确认风险、驳回风险和请求法务复核。
@@ -49,7 +50,7 @@ FastAPI 后端（8000） ---- 企业内部 OpenAI 兼容 LLM 网关
         +---- SQLite（可选本地冒烟测试）
         +---- Redis 7
         +---- 本地文档存储 / MinIO 服务
-        +---- 本地 sentence-transformers 多语言嵌入
+        +---- Embedding Provider（本地 Qwen3 或 OpenAI text-embedding-3）
 ```
 
 LLM 网关可通过环境变量配置，项目没有硬编码任何公共商业模型接口。模型只接收检索出的证据文本块，不接收完整合同。
@@ -139,8 +140,16 @@ npm run lint
 | `LLM_SMALL_MODEL` | 小型 AI 任务所用模型 | `internal-9b` |
 | `LLM_MEDIUM_MODEL` | 较大型 AI 任务所用模型 | `internal-14b` |
 | `LLM_TIMEOUT_SECONDS` | LLM 请求超时时间 | `120` |
-| `EMBEDDING_MODEL` | sentence-transformers 模型 ID、本地路径或缓存模型 ID | `BAAI/bge-m3` |
+| `EMBEDDING_PROVIDER` | 嵌入后端：`local` 或 `openai` | `local` |
+| `EMBEDDING_MODEL` | 本地 sentence-transformers 模型/路径，或 OpenAI 兼容嵌入模型 | `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DIM` | 预期嵌入维度 | `1024` |
+| `EMBEDDING_ENABLED` | 是否启用向量生成和向量检索 | `true` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止从远程 Hub 下载本地嵌入模型文件 | `false` |
+| `EMBEDDING_BASE_URL` | `EMBEDDING_PROVIDER=openai` 时的 OpenAI 兼容 embeddings 地址 | `https://api.openai.com/v1` |
+| `EMBEDDING_API_KEY` | OpenAI 兼容 embeddings API Key | 空 |
+| `VECTOR_SCORE_THRESHOLD` | 向量检索返回的最小余弦相似度 | `0.05` |
+
+文档处理会为每个切块生成 embedding，并将向量存储在切块记录上。Topic Search 已改为向量检索/RAG：预设话题会把 label、description、keywords 拼成语义查询文本后生成向量；自定义查询会直接生成向量并检索文档切块向量。`EMBEDDING_PROVIDER=local` 时使用 `sentence-transformers` 本地推理（例如 Qwen3-Embedding）；`EMBEDDING_PROVIDER=openai` 时调用 OpenAI 兼容 `/embeddings` 接口（例如 `text-embedding-3-small` 或 `text-embedding-3-large`）。仅当需要退回关键词匹配时才设置 `EMBEDDING_ENABLED=false`。
 | `EMBEDDING_ENABLED` | 是否在混合搜索中启用本地语义评分 | `true` |
 | `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止文档处理期间从远程 Hub 下载嵌入模型文件 | `true` |
 
@@ -181,7 +190,7 @@ npm run lint
 
 - 支持纯文本、DOCX、XLSX 和文本型 PDF 解析。
 - 不支持 OCR 和扫描型 PDF。PDF 可提取文字过少时会返回 `OCR_NOT_SUPPORTED_IN_MVP`。
-- 主题词典使用配置的关键词；启用嵌入后，自定义混合搜索会使用本地计算的嵌入叠加多语言语义匹配。
+- Topic Search 采用向量优先检索：预设话题文本和自定义查询都会生成 embedding，再与已存储的切块向量匹配以生成 RAG 证据。
 - 为兼容 SQLite，嵌入以 JSON 兼容数组保存；当前 MVP 不使用专用向量数据库。
 - 规则引擎和 AI 只生成风险草稿，不构成最终法律结论。
 - 所有高风险结果和简报都必须经过人工复核后才能采取行动。

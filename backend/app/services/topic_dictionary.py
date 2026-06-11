@@ -26,9 +26,28 @@ def get_all_topics() -> list[dict[str, Any]]:
     return _load_topics()
 
 
-def keywords_for_topic(topic_key: str) -> list[str]:
-    """根据话题 key 获取关键词列表。"""
+def get_topic(topic_key: str) -> dict[str, Any] | None:
+    """根据话题 key 获取完整话题配置。"""
     for topic in _load_topics():
         if topic.get("key") == topic_key:
-            return topic.get("keywords", [])
-    return []
+            return topic
+    return None
+
+
+def keywords_for_topic(topic_key: str) -> list[str]:
+    """根据话题 key 获取关键词列表（仅用于 embedding 查询增强/降级兼容）。"""
+    topic = get_topic(topic_key)
+    return topic.get("keywords", []) if topic else []
+
+
+def topic_search_text(topic_key: str) -> str:
+    """拼接话题标签、描述和关键词，作为向量检索的语义查询文本。"""
+    topic = get_topic(topic_key)
+    if not topic:
+        return ""
+    parts = [
+        str(topic.get("label", "")),
+        str(topic.get("description", "")),
+        " ".join(topic.get("keywords", [])),
+    ]
+    return "\n".join(part for part in parts if part.strip())
