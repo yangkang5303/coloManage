@@ -142,13 +142,10 @@ The project reads backend settings from environment variables. Start with `.env.
 | `EMBEDDING_PROVIDER` | Embedding backend: `local` or `openai` | `local` |
 | `EMBEDDING_MODEL` | Local sentence-transformers model/path or OpenAI-compatible embedding model | `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DIM` | Expected embedding dimension | `1024` |
-| `EMBEDDING_ENABLED` | Enables vector generation and vector retrieval | `true` |
-| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading local embedding model files from remote hubs | `false` |
-| `EMBEDDING_BASE_URL` | OpenAI-compatible embeddings base URL when `EMBEDDING_PROVIDER=openai` | `https://api.openai.com/v1` |
-| `EMBEDDING_API_KEY` | API key for OpenAI-compatible embeddings | empty |
-| `VECTOR_SCORE_THRESHOLD` | Minimum cosine score returned by vector search | `0.05` |
+| `EMBEDDING_ENABLED` | Enables local semantic scoring in hybrid search | `true` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading embedding model files from remote hubs during document processing | `true` |
 
-Document processing generates an embedding for each chunk and stores the vector on the chunk record. Topic Search now uses vector retrieval for RAG: preset topics are converted to semantic query text from label, description, and keywords, while ad-hoc queries are embedded directly. With `EMBEDDING_PROVIDER=local`, inference runs through `sentence-transformers` (for example Qwen3-Embedding). With `EMBEDDING_PROVIDER=openai`, the backend calls an OpenAI-compatible `/embeddings` endpoint such as `text-embedding-3-small` or `text-embedding-3-large`. Set `EMBEDDING_ENABLED=false` only when semantic retrieval should fall back to keyword matching.
+Embedding generation is local inference: document chunks and query text are not uploaded to Hugging Face for embedding. The Hugging Face URL you may see, such as `BAAI/bge-m3/resolve/main/adapter_config.json`, is a model-file lookup/download made by `sentence-transformers`, not a document upload. For firewalled deployments, pre-download or mount the embedding model locally, set `EMBEDDING_MODEL` to that local path or cache id, and keep `EMBEDDING_LOCAL_FILES_ONLY=true`. Set `EMBEDDING_LOCAL_FILES_ONLY=false` only in an environment where model downloads are allowed; set `EMBEDDING_ENABLED=false` when semantic scoring should be disabled.
 
 ## Main Workflows
 

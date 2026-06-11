@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 
 interface TopicOption {
@@ -29,6 +29,19 @@ interface EvidenceItem {
   cosine_score?: number;
   evidence_text?: string;
   document_role?: string;
+}
+
+interface ChunkDetail {
+  id: number;
+  document_id: number;
+  document_title: string | null;
+  document_type: string | null;
+  chunk_index: number;
+  page_number: number | null;
+  sheet_name: string | null;
+  section_title: string | null;
+  clause_reference: string | null;
+  text: string;
 }
 
 interface EvidencePack {
@@ -69,6 +82,9 @@ export default function TopicSearchPage() {
   const [error, setError] = useState("");
   const [topics, setTopics] = useState<TopicOption[]>([]);
   const [contracts, setContracts] = useState<{ id: number; title: string }[]>([]);
+  const [expandedChunkId, setExpandedChunkId] = useState<number | null>(null);
+  const [loadingChunkId, setLoadingChunkId] = useState<number | null>(null);
+  const [chunkCache, setChunkCache] = useState<Record<number, ChunkDetail>>({});
 
   useEffect(() => {
     apiGet("/search/topics")
@@ -106,10 +122,32 @@ export default function TopicSearchPage() {
             contract_id: Number(contractId),
           });
       setResult(data);
+      setExpandedChunkId(null);
     } catch (err: any) {
       setError(err.message || "未知错误");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleChunk(chunkId: number) {
+    if (expandedChunkId === chunkId) {
+      setExpandedChunkId(null);
+      return;
+    }
+
+    setExpandedChunkId(chunkId);
+    if (chunkCache[chunkId]) return;
+
+    setLoadingChunkId(chunkId);
+    try {
+      const data: ChunkDetail = await apiGet(`/chunks/${chunkId}`);
+      setChunkCache((prev) => ({ ...prev, [chunkId]: data }));
+    } catch (err: any) {
+      setError(err.message || "加载原文失败");
+      setExpandedChunkId(null);
+    } finally {
+      setLoadingChunkId(null);
     }
   }
 
@@ -241,53 +279,88 @@ export default function TopicSearchPage() {
             <tbody>
               {allEvidence.map((item, idx) => {
                 const displayScore = item.combined_score ?? item.score;
-                const textPreview = (item.evidence_text || item.text || "").slice(0, 300);
+                const sourceText = item.evidence_text || item.text || "";
+                const textPreview = sourceText.slice(0, 300);
+                const chunk = chunkCache[item.chunk_id];
+                const isExpanded = expandedChunkId === item.chunk_id;
                 return (
-                  <tr
-                    key={`${item.chunk_id}-${idx}`}
-                    className="border-t border-line hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <span className="font-mono font-semibold text-action">
-                        {displayScore.toFixed(4)}
-                      </span>
-                      {item.combined_score != null && (
+                  <Fragment key={`${item.chunk_id}-${idx}`}>
+                    <tr className="border-t border-line hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-semibold text-action">
+                          {displayScore.toFixed(4)}
+                        </span>
+                        {item.combined_score != null && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            <div>KW: {item.keyword_score?.toFixed(2)}</div>
+                            <div>Cos: {(item.cosine_score ?? item.vector_score)?.toFixed(2)}</div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                            DOCUMENT_TYPE_COLORS[item.document_type] ||
+                            "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {DOCUMENT_TYPE_LABELS[item.document_type] || item.document_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {item.document_title}
                         <div className="text-xs text-gray-400 mt-1">
                           <div>Vec: {(item.cosine_score ?? item.vector_score)?.toFixed(2)}</div>
                           {item.retrieval_mode === "keyword_fallback" && (
                             <div>KW fallback: {item.keyword_score?.toFixed(2)}</div>
                           )}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                          DOCUMENT_TYPE_COLORS[item.document_type] ||
-                          "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {DOCUMENT_TYPE_LABELS[item.document_type] || item.document_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {item.document_title}
-                      <div className="text-xs text-gray-400 mt-1">
-                        {item.page_number != null && `P${item.page_number} `}
-                        {item.sheet_name && `${item.sheet_name} `}
-                        {item.chunk_index != null && `Chunk #${item.chunk_index}`}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {item.section_title || item.clause_reference || "-"}
-                    </td>
-                    <td className="px-4 py-3 max-w-xl">
-                      <pre className="whitespace-pre-wrap text-xs leading-relaxed text-gray-700">
-                        {textPreview}
-                        {(item.evidence_text || item.text || "").length > 300 && "…"}
-                      </pre>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {item.section_title || item.clause_reference || "-"}
+                      </td>
+                      <td className="px-4 py-3 max-w-xl">
+                        <pre className="whitespace-pre-wrap text-xs leading-relaxed text-gray-700">
+                          {textPreview}{sourceText.length > 300 && "…"}
+                        </pre>
+                        <button
+                          type="button"
+                          onClick={() => toggleChunk(item.chunk_id)}
+                          className="mt-2 rounded border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                          disabled={loadingChunkId === item.chunk_id}
+                        >
+                          {loadingChunkId === item.chunk_id
+                            ? "加载原文中…"
+                            : isExpanded
+                              ? "收起原文"
+                              : "查看全部原文"}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-t border-blue-100 bg-blue-50/60">
+                        <td colSpan={5} className="px-4 py-4">
+                          {chunk ? (
+                            <div className="rounded-md border border-blue-200 bg-white p-4">
+                              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                <span className="font-semibold text-slate-700">支撑依据 Chunk 原文</span>
+                                {chunk.document_title && <span>{chunk.document_title}</span>}
+                                {chunk.document_type && <span className="rounded bg-slate-100 px-1.5 py-0.5">{chunk.document_type}</span>}
+                                <span>Chunk #{chunk.chunk_index}</span>
+                                {chunk.page_number != null && <span>P{chunk.page_number}</span>}
+                                {chunk.sheet_name && <span>Sheet: {chunk.sheet_name}</span>}
+                                {chunk.section_title && <span>§ {chunk.section_title}</span>}
+                                {chunk.clause_reference && <span>Clause {chunk.clause_reference}</span>}
+                              </div>
+                              <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm leading-relaxed text-slate-800">{chunk.text}</pre>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500">正在加载完整 chunk 原文…</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

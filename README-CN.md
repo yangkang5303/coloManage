@@ -15,6 +15,7 @@
 | 可选对象存储 | MinIO | `9000`（API）、`9001`（控制台） |
 
 不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认本地嵌入模型为 `Qwen/Qwen3-Embedding-0.6B`。也可以设置 `EMBEDDING_PROVIDER=openai`，使用 `text-embedding-3-small` 或 `text-embedding-3-large` 等 OpenAI 兼容嵌入模型。文档切块会在处理阶段生成向量并持久化，用于后续向量检索/RAG。
+不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 由 `sentence-transformers` 在本地执行嵌入推理。上传的文档文本会在后端进程内本地生成嵌入，不会发送到 Hugging Face 或云端 embedding API。防火墙环境应先离线下载或挂载模型，再处理文档。
 
 ## 项目简介
 
@@ -149,6 +150,10 @@ npm run lint
 | `VECTOR_SCORE_THRESHOLD` | 向量检索返回的最小余弦相似度 | `0.05` |
 
 文档处理会为每个切块生成 embedding，并将向量存储在切块记录上。Topic Search 已改为向量检索/RAG：预设话题会把 label、description、keywords 拼成语义查询文本后生成向量；自定义查询会直接生成向量并检索文档切块向量。`EMBEDDING_PROVIDER=local` 时使用 `sentence-transformers` 本地推理（例如 Qwen3-Embedding）；`EMBEDDING_PROVIDER=openai` 时调用 OpenAI 兼容 `/embeddings` 接口（例如 `text-embedding-3-small` 或 `text-embedding-3-large`）。仅当需要退回关键词匹配时才设置 `EMBEDDING_ENABLED=false`。
+| `EMBEDDING_ENABLED` | 是否在混合搜索中启用本地语义评分 | `true` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止文档处理期间从远程 Hub 下载嵌入模型文件 | `true` |
+
+嵌入生成是本地推理：文档块和查询文本不会上传到 Hugging Face 进行 embedding。你看到的 Hugging Face URL（例如 `BAAI/bge-m3/resolve/main/adapter_config.json`）是 `sentence-transformers` 在查找/下载模型文件，不是上传文档。若部署在防火墙或无公网环境，请先离线下载或挂载嵌入模型，将 `EMBEDDING_MODEL` 指向本地路径或本地缓存 ID，并保持 `EMBEDDING_LOCAL_FILES_ONLY=true`。仅在允许联网下载模型的环境中，才设置 `EMBEDDING_LOCAL_FILES_ONLY=false`；仅当需要关闭语义评分时，才设置 `EMBEDDING_ENABLED=false`。
 
 ## 主要使用流程
 
