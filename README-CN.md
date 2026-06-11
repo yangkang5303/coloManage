@@ -14,7 +14,7 @@
 | 队列 / 缓存 | Redis 7 | `6379` |
 | 可选对象存储 | MinIO | `9000`（API）、`9001`（控制台） |
 
-不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 可能会在首次生成嵌入时由 `sentence-transformers` 下载，但上传的文档文本会在后端进程内本地生成嵌入，不会发送到 Hugging Face 或云端 embedding API。
+不使用 Docker 进行本地开发时，建议安装 Python 3.12 和 Node.js 22；后端冒烟测试可使用 SQLite 替代 PostgreSQL。推荐启动方式需要 Docker Engine 和 Docker Compose 插件。默认嵌入模型 `BAAI/bge-m3` 由 `sentence-transformers` 在本地执行嵌入推理。上传的文档文本会在后端进程内本地生成嵌入，不会发送到 Hugging Face 或云端 embedding API。防火墙环境应先离线下载或挂载模型，再处理文档。
 
 ## 项目简介
 
@@ -142,9 +142,9 @@ npm run lint
 | `EMBEDDING_MODEL` | sentence-transformers 模型 ID、本地路径或缓存模型 ID | `BAAI/bge-m3` |
 | `EMBEDDING_DIM` | 预期嵌入维度 | `1024` |
 | `EMBEDDING_ENABLED` | 是否在混合搜索中启用本地语义评分 | `true` |
-| `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止从远程 Hub 下载嵌入模型文件 | `false` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | 是否禁止文档处理期间从远程 Hub 下载嵌入模型文件 | `true` |
 
-嵌入生成是本地推理：`sentence-transformers` 可以下载模型文件，但文档块和查询文本不会上传到 Hugging Face 进行 embedding。若部署在无公网环境，请先离线下载或挂载嵌入模型，将 `EMBEDDING_MODEL` 指向本地路径或本地缓存 ID，并设置 `EMBEDDING_LOCAL_FILES_ONLY=true`。仅当需要关闭语义评分时，才设置 `EMBEDDING_ENABLED=false`。
+嵌入生成是本地推理：文档块和查询文本不会上传到 Hugging Face 进行 embedding。你看到的 Hugging Face URL（例如 `BAAI/bge-m3/resolve/main/adapter_config.json`）是 `sentence-transformers` 在查找/下载模型文件，不是上传文档。若部署在防火墙或无公网环境，请先离线下载或挂载嵌入模型，将 `EMBEDDING_MODEL` 指向本地路径或本地缓存 ID，并保持 `EMBEDDING_LOCAL_FILES_ONLY=true`。仅在允许联网下载模型的环境中，才设置 `EMBEDDING_LOCAL_FILES_ONLY=false`；仅当需要关闭语义评分时，才设置 `EMBEDDING_ENABLED=false`。
 
 ## 主要使用流程
 

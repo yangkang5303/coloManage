@@ -14,7 +14,7 @@ Docker Compose is the recommended runtime. The included containers use the follo
 | Queue / cache | Redis 7 | `6379` |
 | Optional object storage | MinIO | `9000` (API), `9001` (console) |
 
-For local development without Docker, use Python 3.12 and Node.js 22. SQLite can replace PostgreSQL for backend smoke tests. Docker Engine with the Docker Compose plugin is required for the recommended setup. The default embedding model, `BAAI/bge-m3`, may be downloaded by `sentence-transformers` when embedding generation is first used, but uploaded document text is embedded locally in the backend process and is not sent to Hugging Face or a cloud embedding API.
+For local development without Docker, use Python 3.12 and Node.js 22. SQLite can replace PostgreSQL for backend smoke tests. Docker Engine with the Docker Compose plugin is required for the recommended setup. The default embedding model, `BAAI/bge-m3`, is used by `sentence-transformers` for local embedding inference. Uploaded document text is embedded locally in the backend process and is not sent to Hugging Face or a cloud embedding API. Firewalled deployments should pre-download or mount the model before processing documents.
 
 ## Overview
 
@@ -142,9 +142,9 @@ The project reads backend settings from environment variables. Start with `.env.
 | `EMBEDDING_MODEL` | Sentence-transformers model id, local path, or cached model id | `BAAI/bge-m3` |
 | `EMBEDDING_DIM` | Expected embedding dimension | `1024` |
 | `EMBEDDING_ENABLED` | Enables local semantic scoring in hybrid search | `true` |
-| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading embedding model files from remote hubs | `false` |
+| `EMBEDDING_LOCAL_FILES_ONLY` | Prevents downloading embedding model files from remote hubs during document processing | `true` |
 
-Embedding generation is local inference: `sentence-transformers` may download model files, but document chunks and query text are not uploaded to Hugging Face for embedding. For air-gapped deployments, pre-download or mount the embedding model locally, set `EMBEDDING_MODEL` to that local path or cache id, and set `EMBEDDING_LOCAL_FILES_ONLY=true`. Set `EMBEDDING_ENABLED=false` only when semantic scoring should be disabled.
+Embedding generation is local inference: document chunks and query text are not uploaded to Hugging Face for embedding. The Hugging Face URL you may see, such as `BAAI/bge-m3/resolve/main/adapter_config.json`, is a model-file lookup/download made by `sentence-transformers`, not a document upload. For firewalled deployments, pre-download or mount the embedding model locally, set `EMBEDDING_MODEL` to that local path or cache id, and keep `EMBEDDING_LOCAL_FILES_ONLY=true`. Set `EMBEDDING_LOCAL_FILES_ONLY=false` only in an environment where model downloads are allowed; set `EMBEDDING_ENABLED=false` when semantic scoring should be disabled.
 
 ## Main Workflows
 
